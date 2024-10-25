@@ -126,11 +126,10 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         long ets = completedon.getTime() - 10 * 1000;
         Map<String, Object> objectMap = new HashMap<>();
         objectMap.put("user_id", userId);
-        objectMap.put("etc", ets);
+        objectMap.put("ets", ets);
         objectMap.put("event_id", eventId);
         objectMap.put("batch_id", batchId);
         producer.pushWithKey(serverProperties.getUserEventKarmaPointTopic(), objectMap, userId);
-
     }
 
     public void generateIssueCertificateEvent(String batchId, String eventId, List<String> userIds, double eventCompletionPercentage, String userId, Date completedon) throws JsonProcessingException {
