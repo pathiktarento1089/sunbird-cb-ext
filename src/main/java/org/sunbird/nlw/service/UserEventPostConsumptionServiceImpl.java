@@ -88,8 +88,10 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         String userid = record.get("userid");
         String contentid = record.get("contentid");
         String batchid = record.get("batchid");
+        logger.info(String.format("Processing User event enrolment. UserId: %s, EventId: %s, BatchId: %s", userid, contentid, batchid));
         List<Map<String, Object>> enrolmentRecords = fetchEnrolmentRecordsForUser(userid, contentid, batchid);
         if (!enrolmentRecords.isEmpty()) {
+            logger.info("User event enrolment found.");
             Map<String, Object> enrolmentRecord = enrolmentRecords.get(0);
             String lrcProgressdetails = (String) enrolmentRecord.get("lrc_progressdetails");
             JsonNode lrcProgressdetailsMap = objectMapper.readTree(lrcProgressdetails);
@@ -106,10 +108,13 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
                 if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
                     generateIssueCertificateEvent(batchid,contentid, Arrays.asList(userid), 100.0, userid, completedon);
                     generateKarmaPointEventAndPushToKafka(userid, contentid, batchid, completedon);
+                    logger.info("Successfully updated DB and fired kafka message.");
                 } else {
-                    logger.info("failed to update records with updated details");
+                    logger.info("Failed to update records with updated details");
                 }
             }
+        } else {
+            logger.info("User event enrolment not found.");
         }
     }
 
@@ -172,7 +177,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         compositeKey.put(Constants.CONTEXT_ID_CAMEL, eventId);
         compositeKey.put(Constants.BATCH_ID, batchId);
 
-        List<Map<String, Object>> enrolmentRecords = cassandraOperation.getRecordsByProperties(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, serverProperties.getUserEventEnrolmentTable(), compositeKey, null);
+        List<Map<String, Object>> enrolmentRecords = cassandraOperation.getRecordsByPropertiesWithoutFiltering(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, serverProperties.getUserEventEnrolmentTable(), compositeKey, null);
         return enrolmentRecords;
     }
 
