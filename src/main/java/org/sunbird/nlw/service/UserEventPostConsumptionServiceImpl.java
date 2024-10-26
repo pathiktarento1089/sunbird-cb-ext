@@ -90,28 +90,33 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         if (!enrolmentRecords.isEmpty()) {
             logger.info("User event enrolment found.");
             Map<String, Object> enrolmentRecord = enrolmentRecords.get(0);
-            String lrcProgressdetails = (String) enrolmentRecord.get("lrc_progressdetails");
-            JsonNode lrcProgressdetailsMap = objectMapper.readTree(lrcProgressdetails);
-            long duration = lrcProgressdetailsMap.get("duration").asLong();
-            if (duration >= 180) {
-                Map<String,Object> updateEnrollmentRecords = prepareUpdatedEnrollmentRecord(enrolmentRecord);
-                if (updateEnrollmentRecords.get("completedon") != null) {
-                    Date completedon = (Date) updateEnrollmentRecords.get("completedon");
-                    Map<String,Object> keyMap = new HashMap<>();
-                    keyMap.put(Constants.USER_ID, userid);
-                    keyMap.put(Constants.CONTENT_ID_KEY, contentid);
-                    keyMap.put(Constants.CONTEXT_ID_CAMEL, contentid);
-                    keyMap.put(Constants.BATCH_ID, batchid);
-                    Map<String, Object> resp = cassandraOperation.updateRecord(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, serverProperties.getUserEventEnrolmentTable(),updateEnrollmentRecords,keyMap);
-                    if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
-                        generateIssueCertificateEvent(batchid,contentid, Arrays.asList(userid), 100.0, userid, completedon);
-                        generateKarmaPointEventAndPushToKafka(userid, contentid, batchid, completedon);
-                        logger.info("Successfully updated DB and fired kafka message.");
+            int status = (int) enrolmentRecord.get(Constants.STATUS);
+            if (status == 2 || status == 1) {
+                String lrcProgressdetails = (String) enrolmentRecord.get("lrc_progressdetails");
+                JsonNode lrcProgressdetailsMap = objectMapper.readTree(lrcProgressdetails);
+                long duration = lrcProgressdetailsMap.get("duration").asLong();
+                if (duration >= 180) {
+                    Map<String,Object> updateEnrollmentRecords = prepareUpdatedEnrollmentRecord(enrolmentRecord);
+                    if (updateEnrollmentRecords.get("completedon") != null) {
+                        Date completedon = (Date) updateEnrollmentRecords.get("completedon");
+                        Map<String,Object> keyMap = new HashMap<>();
+                        keyMap.put(Constants.USER_ID, userid);
+                        keyMap.put(Constants.CONTENT_ID_KEY, contentid);
+                        keyMap.put(Constants.CONTEXT_ID_CAMEL, contentid);
+                        keyMap.put(Constants.BATCH_ID, batchid);
+                        Map<String, Object> resp = cassandraOperation.updateRecord(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, serverProperties.getUserEventEnrolmentTable(),updateEnrollmentRecords,keyMap);
+                        if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                            logger.info("Successfully updated DB");
+                            if (enrolmentRecord.get("issued_certificates") == null) {
+                                generateIssueCertificateEvent(batchid,contentid, Arrays.asList(userid), 100.0, userid, completedon);
+                            }
+                            generateKarmaPointEventAndPushToKafka(userid, contentid, batchid, completedon);
+                        } else {
+                            logger.error("Failed to update records with updated details");
+                        }
                     } else {
-                        logger.info("Failed to update records with updated details");
+                        logger.error("Failed to compute completedOn value.");
                     }
-                } else {
-                    logger.error("Failed to compute completedOn value.");
                 }
             }
         } else {
@@ -131,6 +136,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         objectMap.put("event_id", eventId);
         objectMap.put("batch_id", batchId);
         producer.pushWithKey(serverProperties.getUserEventKarmaPointTopic(), objectMap, userId);
+        logger.info("Pushed kafka message for issue-karma-points");
     }
 
     public void generateIssueCertificateEvent(String batchId, String eventId, List<String> userIds, double eventCompletionPercentage, String userId, Date completedon) throws JsonProcessingException {
@@ -167,6 +173,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         object.put("type", "IssueCertificate");
         event.put("object", object);
         producer.push(serverProperties.getUserIssueCertificateForEventTopic(),event);
+        logger.info("Pushed kafka message for issue-event-certificate");
     }
 
     private List<Map<String, Object>> fetchEnrolmentRecordsForUser(String userId, String eventId, String batchId) {
@@ -182,65 +189,65 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
     }
 
     private Map<String, Object> prepareUpdatedEnrollmentRecord(Map<String, Object> enrolmentRecord) throws IOException {
+        Map<String, Object> updatedRecord = new HashMap<>();
+        updatedRecord.put("completionpercentage", 100.0f);
+        updatedRecord.put("progress", 100);
+        updatedRecord.put("status", 2);
 
-            String lrcProgressdetailsJson = (String) enrolmentRecord.get("lrc_progressdetails");
-            Map<String, Object> lrcProgressdetailsMap = objectMapper.readValue(lrcProgressdetailsJson, new TypeReference<Map<String, Object>>() {});
+        String lrcProgressdetailsJson = (String) enrolmentRecord.get("lrc_progressdetails");
+        Map<String, Object> lrcProgressdetailsMap = objectMapper.readValue(lrcProgressdetailsJson,
+                new TypeReference<Map<String, Object>>() {
+                });
 
-            Integer maxSize = (Integer) lrcProgressdetailsMap.get("max_size");
+        Integer maxSize = (Integer) lrcProgressdetailsMap.get("max_size");
 
-            lrcProgressdetailsMap.put("duration", maxSize);
-            lrcProgressdetailsMap.put("stateMetaData", maxSize);
+        lrcProgressdetailsMap.put("duration", maxSize);
+        lrcProgressdetailsMap.put("stateMetaData", maxSize);
 
-            Map<String, Object> updatedRecord = new HashMap<>();
-            updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
-            if (enrolmentRecord.get("completedon") == null) {
-                String contentId = (String) enrolmentRecord.get("contentId");
-                String batchId = (String) enrolmentRecord.get("batchId");
-                String cacheKey = contentId + "-" + batchId;
-                if (endDateCache.containsKey(cacheKey)) {
-                    updatedRecord.put("completedon", endDateCache.get(cacheKey));
-                } else {
-                    Map<String, Object> keyMap = new HashMap<>();
-                    keyMap.put("eventid", contentId);
-                    keyMap.put("batchid", batchId);
-                    List<Map<String, Object>> eventData = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
-                            Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, Constants.EVENT_BATCH_TABLE_NAME, keyMap,
-                            Arrays.asList("end_date", "batch_attributes"));
-                    if (!eventData.isEmpty()) {
-                        try {
-                            Date endDateAsDate = (Date) eventData.get(0).get("end_date");
-                            ZonedDateTime endDate = endDateAsDate.toInstant().atZone(ZoneOffset.UTC);
+        updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
 
-                            JsonNode batchAttributesJson = (new ObjectMapper())
-                                    .readTree((String) eventData.get(0).get("batch_attributes"));
-                            String endTimeStr = batchAttributesJson.get("endTime").asText();
+        String contentId = (String) enrolmentRecord.get("contentId");
+        String batchId = (String) enrolmentRecord.get("batchId");
+        String cacheKey = contentId + "-" + batchId;
+        if (endDateCache.containsKey(cacheKey)) {
+            updatedRecord.put("completedon", endDateCache.get(cacheKey));
+        } else {
+            Map<String, Object> keyMap = new HashMap<>();
+            keyMap.put("eventid", contentId);
+            keyMap.put("batchid", batchId);
+            List<Map<String, Object>> eventData = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                    Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, Constants.EVENT_BATCH_TABLE_NAME, keyMap,
+                    Arrays.asList("end_date", "batch_attributes"));
+            if (!eventData.isEmpty()) {
+                try {
+                    Date endDateAsDate = (Date) eventData.get(0).get("end_date");
+                    ZonedDateTime endDate = endDateAsDate.toInstant().atZone(ZoneOffset.UTC);
 
-                            // Parse endTime with offset as OffsetTime, then reduce it by 1 minute
-                            DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ssXXX");
-                            OffsetTime endTime = OffsetTime.parse(endTimeStr, timeFormatter).minusMinutes(1);
+                    JsonNode batchAttributesJson = (new ObjectMapper())
+                            .readTree((String) eventData.get(0).get("batch_attributes"));
+                    String endTimeStr = batchAttributesJson.get("endTime").asText();
 
-                            // Combine date from end_date and adjusted time from batch_attributes.endTime
-                            ZonedDateTime endDateTime = endDate.withHour(endTime.getHour())
-                                    .withMinute(endTime.getMinute())
-                                    .withSecond(endTime.getSecond())
-                                    .withNano(endTime.getNano());
+                    // Parse endTime with offset as OffsetTime, then reduce it by 1 minute
+                    DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ssXXX");
+                    OffsetTime endTime = OffsetTime.parse(endTimeStr, timeFormatter).minusMinutes(1);
 
-                            Date updatedEndDate = Date.from(endDateTime.toInstant());
-                            endDateCache.put(cacheKey, updatedEndDate);
-                            updatedRecord.put("completedon", updatedEndDate);
-                            logger.info("Updated completedOn with event end_date: " + updatedEndDate);
-                        } catch (Exception e) {
-                            logger.error("Failed to parse the end_date details. Exception: ", e);
-                        }
-                    } else {
-                        logger.info("No matching event_batch record found for the specified eventid and batchid.");
-                    }
+                    // Combine date from end_date and adjusted time from batch_attributes.endTime
+                    ZonedDateTime endDateTime = endDate.withHour(endTime.getHour())
+                            .withMinute(endTime.getMinute())
+                            .withSecond(endTime.getSecond())
+                            .withNano(endTime.getNano());
+
+                    Date updatedEndDate = Date.from(endDateTime.toInstant());
+                    endDateCache.put(cacheKey, updatedEndDate);
+                    updatedRecord.put("completedon", updatedEndDate);
+                    logger.info("Updated completedOn with event end_date: " + updatedEndDate);
+                } catch (Exception e) {
+                    logger.error("Failed to parse the end_date details. Exception: ", e);
                 }
+            } else {
+                logger.error("No matching event_batch record found for the specified eventid and batchid.");
             }
-            updatedRecord.put("status", 2);
-            updatedRecord.put("completionpercentage", 100.0f);
-            updatedRecord.put("progress", 100);
-            logger.info("Successfully prepared the updated fields");
-            return updatedRecord;
+        }
+        return updatedRecord;
     }
 }
