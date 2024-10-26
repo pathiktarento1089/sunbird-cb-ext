@@ -54,7 +54,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
 
     Logger logger = LogManager.getLogger(CQFConsumer.class);
 
-    private Map<String, Object> endDateCache = new HashMap<>();
+    private Map<String, Object> eventInfoCache = new HashMap<>();
 
     @Override
     public SBApiResponse processEventUsersForCertificateAndKarmaPoints(MultipartFile multipartFile) {
@@ -203,18 +203,15 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
                 new TypeReference<Map<String, Object>>() {
                 });
 
-        Integer maxSize = (Integer) lrcProgressdetailsMap.get("max_size");
-
-        lrcProgressdetailsMap.put("duration", maxSize);
-        lrcProgressdetailsMap.put("stateMetaData", maxSize);
-
-        updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
-
         String contentId = (String) enrolmentRecord.get("contentId");
         String batchId = (String) enrolmentRecord.get("batchId");
         String cacheKey = contentId + "-" + batchId;
-        if (endDateCache.containsKey(cacheKey)) {
-            updatedRecord.put("completedon", endDateCache.get(cacheKey));
+        if (eventInfoCache.containsKey(cacheKey)) {
+            Map<String, Object> eventInfo = (Map<String, Object>) eventInfoCache.get(cacheKey);
+            updatedRecord.put("completedon", eventInfo.get("completedon"));
+            lrcProgressdetailsMap.put("duration", eventInfo.get("duration"));
+            lrcProgressdetailsMap.put("stateMetaData", eventInfo.get("duration"));
+            updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
         } else {
             Map<String, Object> keyMap = new HashMap<>();
             keyMap.put("eventid", contentId);
@@ -242,8 +239,18 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
                             .withNano(endTime.getNano());
 
                     Date updatedEndDate = Date.from(endDateTime.toInstant());
-                    endDateCache.put(cacheKey, updatedEndDate);
                     updatedRecord.put("completedon", updatedEndDate);
+
+                    // Get Duration from batchAttributes column - duration value which is in minutes.
+                    int duration = 60 * batchAttributesJson.get("duration").asInt();
+                    lrcProgressdetailsMap.put("duration", duration);
+                    lrcProgressdetailsMap.put("stateMetaData", duration);
+                    updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
+                    
+                    Map<String, Object> eventInfo = new HashMap<String, Object>();
+                    eventInfo.put("completedon", updatedEndDate);
+                    eventInfo.put("duration", duration);
+                    eventInfoCache.put(cacheKey, eventInfo);
                     logger.info("Updated completedOn with event end_date: " + updatedEndDate);
                 } catch (Exception e) {
                     logger.error("Failed to parse the end_date details. Exception: ", e);
