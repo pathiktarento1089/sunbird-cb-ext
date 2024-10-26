@@ -78,6 +78,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             response.getParams().setErrmsg("An unexpected error occurred: " + e.getMessage());
         }
+        eventInfoCache.clear();
         return response;
     }
 
@@ -90,38 +91,28 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         if (!enrolmentRecords.isEmpty()) {
             logger.info("User event enrolment found.");
             Map<String, Object> enrolmentRecord = enrolmentRecords.get(0);
-            int status = (int) enrolmentRecord.get(Constants.STATUS);
-            String lrcProgressdetails = (String) enrolmentRecord.get("lrc_progressdetails");
-            if (status == 2 || status == 1) {
-                if (StringUtils.isNoneBlank(lrcProgressdetails)) {
-                    JsonNode lrcProgressdetailsMap = objectMapper.readTree(lrcProgressdetails);
-                    long duration = lrcProgressdetailsMap.get("duration").asLong();
-                    if (duration >= 180) {
-                        Map<String,Object> updateEnrollmentRecords = prepareUpdatedEnrollmentRecord(enrolmentRecord);
-                        if (updateEnrollmentRecords.get("completedon") != null) {
-                            Date completedon = (Date) updateEnrollmentRecords.get("completedon");
-                            Map<String,Object> keyMap = new HashMap<>();
-                            keyMap.put(Constants.USER_ID, userid);
-                            keyMap.put(Constants.CONTENT_ID_KEY, contentid);
-                            keyMap.put(Constants.CONTEXT_ID_CAMEL, contentid);
-                            keyMap.put(Constants.BATCH_ID, batchid);
-                            Map<String, Object> resp = cassandraOperation.updateRecord(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, serverProperties.getUserEventEnrolmentTable(),updateEnrollmentRecords,keyMap);
-                            if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
-                                logger.info("Successfully updated DB");
-                                if (enrolmentRecord.get("issued_certificates") == null) {
-                                    generateIssueCertificateEvent(batchid,contentid, Arrays.asList(userid), 100.0, userid, completedon);
-                                }
-                                generateKarmaPointEventAndPushToKafka(userid, contentid, batchid, completedon);
-                            } else {
-                                logger.error("Failed to update records with updated details");
-                            }
-                        } else {
-                            logger.error("Failed to compute completedOn value.");
-                        }
+            Map<String, Object> updateEnrollmentRecords = prepareUpdatedEnrollmentRecord(enrolmentRecord);
+            if (updateEnrollmentRecords != null) {
+                Date completedon = (Date) updateEnrollmentRecords.get("completedon");
+                Map<String, Object> keyMap = new HashMap<>();
+                keyMap.put(Constants.USER_ID, userid);
+                keyMap.put(Constants.CONTENT_ID_KEY, contentid);
+                keyMap.put(Constants.CONTEXT_ID_CAMEL, contentid);
+                keyMap.put(Constants.BATCH_ID, batchid);
+                Map<String, Object> resp = cassandraOperation.updateRecord(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME,
+                        serverProperties.getUserEventEnrolmentTable(), updateEnrollmentRecords, keyMap);
+                if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                    logger.info("Successfully updated DB");
+                    if (enrolmentRecord.get("issuedCertificates") == null) {
+                        generateIssueCertificateEvent(batchid, contentid, Arrays.asList(userid), 100.0, userid,
+                                completedon);
                     }
+                    generateKarmaPointEventAndPushToKafka(userid, contentid, batchid, completedon);
                 } else {
-                    logger.error("Failed to process record. Progress Detail column is null.");
+                    logger.error("Failed to update records with updated details");
                 }
+            } else {
+                logger.error("Failed to compute completedOn value.");
             }
         } else {
             logger.info("User event enrolment not found.");
@@ -193,26 +184,14 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
     }
 
     private Map<String, Object> prepareUpdatedEnrollmentRecord(Map<String, Object> enrolmentRecord) throws IOException {
-        Map<String, Object> updatedRecord = new HashMap<>();
-        updatedRecord.put("completionpercentage", 100.0f);
-        updatedRecord.put("progress", 100);
-        updatedRecord.put("status", 2);
-
-        String lrcProgressdetailsJson = (String) enrolmentRecord.get("lrc_progressdetails");
-        Map<String, Object> lrcProgressdetailsMap = objectMapper.readValue(lrcProgressdetailsJson,
-                new TypeReference<Map<String, Object>>() {
-                });
-
         String contentId = (String) enrolmentRecord.get("contentId");
         String batchId = (String) enrolmentRecord.get("batchId");
         String cacheKey = contentId + "-" + batchId;
+        Integer eventDuration = 0;
+        Date eventUpdatedEndDate = null;
         if (eventInfoCache.containsKey(cacheKey)) {
-            Map<String, Object> eventInfo = (Map<String, Object>) eventInfoCache.get(cacheKey);
-            updatedRecord.put("completedon", eventInfo.get("completedon"));
-            lrcProgressdetailsMap.put("duration", eventInfo.get("duration"));
-            lrcProgressdetailsMap.put("stateMetaData", eventInfo.get("duration"));
-            lrcProgressdetailsMap.put("max_size", eventInfo.get("duration"));
-            updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
+            eventDuration = (Integer) eventInfoCache.get("duration");
+            eventUpdatedEndDate = (Date) eventInfoCache.get("completedon");
         } else {
             Map<String, Object> keyMap = new HashMap<>();
             keyMap.put("eventid", contentId);
@@ -239,28 +218,68 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
                             .withSecond(endTime.getSecond())
                             .withNano(endTime.getNano());
 
-                    Date updatedEndDate = Date.from(endDateTime.toInstant());
-                    updatedRecord.put("completedon", updatedEndDate);
-
-                    // Get Duration from batchAttributes column - duration value which is in minutes.
-                    int duration = 60 * batchAttributesJson.get("duration").asInt();
-                    lrcProgressdetailsMap.put("duration", duration);
-                    lrcProgressdetailsMap.put("stateMetaData", duration);
-                    lrcProgressdetailsMap.put("max_size", duration);
-                    updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
-
+                    eventUpdatedEndDate = Date.from(endDateTime.toInstant());
+                    // Get Duration from batchAttributes column - duration value which is in
+                    // minutes.
+                    eventDuration = 60 * batchAttributesJson.get("duration").asInt();
                     Map<String, Object> eventInfo = new HashMap<String, Object>();
-                    eventInfo.put("completedon", updatedEndDate);
-                    eventInfo.put("duration", duration);
+                    eventInfo.put("completedon", eventUpdatedEndDate);
+                    eventInfo.put("duration", eventDuration);
                     eventInfoCache.put(cacheKey, eventInfo);
-                    logger.info("Updated completedOn with event end_date: " + updatedEndDate);
                 } catch (Exception e) {
                     logger.error("Failed to parse the end_date details. Exception: ", e);
+                    return null;
                 }
             } else {
                 logger.error("No matching event_batch record found for the specified eventid and batchid.");
+                return null;
             }
         }
+
+        Map<String, Object> updatedRecord = new HashMap<>();
+        updatedRecord.put("completionpercentage", 100.0f);
+        updatedRecord.put("progress", 100);
+        updatedRecord.put("status", 2);
+        updatedRecord.put("completedon", eventUpdatedEndDate);
+
+        String lrcProgressdetailsJson = (String) enrolmentRecord.get("lrc_progressdetails");
+        Map<String, Object> lrcProgressdetailsMap = objectMapper.readValue(lrcProgressdetailsJson,
+                new TypeReference<Map<String, Object>>() {
+                });
+        // Check existing max_size is String or integer
+        Integer maxSize = 0;
+        if (lrcProgressdetailsMap.get("max_size") instanceof String) {
+            maxSize = Integer.parseInt((String) lrcProgressdetailsMap.get("max_size"));
+        } else {
+            maxSize = (Integer) lrcProgressdetailsMap.get("max_size");
+        }
+
+        Integer duration = (Integer) lrcProgressdetailsMap.get("duration");
+        Integer status = (Integer) enrolmentRecord.get("status");
+        // is this maxSize is minutes or seconds ?
+        if (!eventDuration.equals(maxSize)) {
+            // this is in minutes... convert duration to seconds
+            duration = 60 * duration;
+        }
+
+        if (status == 0 || (status == 1 && duration < 180)) {
+            // We don't need to update anything... just return null;
+            logger.info("Skipping record. Status is 0 OR Event consumption duration is less than 180 seconds.");
+            return null;
+        } else if (status == 2) {
+            if (enrolmentRecord.get("issuedCertificates") == null || ((List<?>)enrolmentRecord.get("issuedCertificates")).size() == 0) {
+                logger.error("Skipping malformed user record. Status is 2 but cert is not issued.");
+                return null;
+            }
+        }
+
+        lrcProgressdetailsMap.put("max_size", eventDuration);
+        lrcProgressdetailsMap.put("duration", eventDuration);
+        lrcProgressdetailsMap.put("stateMetaData", eventDuration);
+        updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
+
+        logger.info("Updated completedOn with event end_date: " + eventUpdatedEndDate);
+
         return updatedRecord;
     }
 }
