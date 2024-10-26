@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -91,32 +91,36 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
             logger.info("User event enrolment found.");
             Map<String, Object> enrolmentRecord = enrolmentRecords.get(0);
             int status = (int) enrolmentRecord.get(Constants.STATUS);
+            String lrcProgressdetails = (String) enrolmentRecord.get("lrc_progressdetails");
             if (status == 2 || status == 1) {
-                String lrcProgressdetails = (String) enrolmentRecord.get("lrc_progressdetails");
-                JsonNode lrcProgressdetailsMap = objectMapper.readTree(lrcProgressdetails);
-                long duration = lrcProgressdetailsMap.get("duration").asLong();
-                if (duration >= 180) {
-                    Map<String,Object> updateEnrollmentRecords = prepareUpdatedEnrollmentRecord(enrolmentRecord);
-                    if (updateEnrollmentRecords.get("completedon") != null) {
-                        Date completedon = (Date) updateEnrollmentRecords.get("completedon");
-                        Map<String,Object> keyMap = new HashMap<>();
-                        keyMap.put(Constants.USER_ID, userid);
-                        keyMap.put(Constants.CONTENT_ID_KEY, contentid);
-                        keyMap.put(Constants.CONTEXT_ID_CAMEL, contentid);
-                        keyMap.put(Constants.BATCH_ID, batchid);
-                        Map<String, Object> resp = cassandraOperation.updateRecord(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, serverProperties.getUserEventEnrolmentTable(),updateEnrollmentRecords,keyMap);
-                        if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
-                            logger.info("Successfully updated DB");
-                            if (enrolmentRecord.get("issued_certificates") == null) {
-                                generateIssueCertificateEvent(batchid,contentid, Arrays.asList(userid), 100.0, userid, completedon);
+                if (StringUtils.isNoneBlank(lrcProgressdetails)) {
+                    JsonNode lrcProgressdetailsMap = objectMapper.readTree(lrcProgressdetails);
+                    long duration = lrcProgressdetailsMap.get("duration").asLong();
+                    if (duration >= 180) {
+                        Map<String,Object> updateEnrollmentRecords = prepareUpdatedEnrollmentRecord(enrolmentRecord);
+                        if (updateEnrollmentRecords.get("completedon") != null) {
+                            Date completedon = (Date) updateEnrollmentRecords.get("completedon");
+                            Map<String,Object> keyMap = new HashMap<>();
+                            keyMap.put(Constants.USER_ID, userid);
+                            keyMap.put(Constants.CONTENT_ID_KEY, contentid);
+                            keyMap.put(Constants.CONTEXT_ID_CAMEL, contentid);
+                            keyMap.put(Constants.BATCH_ID, batchid);
+                            Map<String, Object> resp = cassandraOperation.updateRecord(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, serverProperties.getUserEventEnrolmentTable(),updateEnrollmentRecords,keyMap);
+                            if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                                logger.info("Successfully updated DB");
+                                if (enrolmentRecord.get("issued_certificates") == null) {
+                                    generateIssueCertificateEvent(batchid,contentid, Arrays.asList(userid), 100.0, userid, completedon);
+                                }
+                                generateKarmaPointEventAndPushToKafka(userid, contentid, batchid, completedon);
+                            } else {
+                                logger.error("Failed to update records with updated details");
                             }
-                            generateKarmaPointEventAndPushToKafka(userid, contentid, batchid, completedon);
                         } else {
-                            logger.error("Failed to update records with updated details");
+                            logger.error("Failed to compute completedOn value.");
                         }
-                    } else {
-                        logger.error("Failed to compute completedOn value.");
                     }
+                } else {
+                    logger.error("Failed to process record. Progress Detail column is null.");
                 }
             }
         } else {
