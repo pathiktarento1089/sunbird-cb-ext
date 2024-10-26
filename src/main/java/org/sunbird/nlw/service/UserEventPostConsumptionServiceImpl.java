@@ -91,6 +91,10 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         if (!enrolmentRecords.isEmpty()) {
             logger.info("User event enrolment found.");
             Map<String, Object> enrolmentRecord = enrolmentRecords.get(0);
+            if (((int) enrolmentRecord.get("status") == 0) || enrolmentRecord.get("lrc_progressdetails") == null) {
+                logger.info("Status is 0 or progressDetails not found. Skipping record.");
+                return;
+            }
             Map<String, Object> updateEnrollmentRecords = prepareUpdatedEnrollmentRecord(enrolmentRecord);
             if (updateEnrollmentRecords != null) {
                 Date completedon = (Date) updateEnrollmentRecords.get("completedon");
