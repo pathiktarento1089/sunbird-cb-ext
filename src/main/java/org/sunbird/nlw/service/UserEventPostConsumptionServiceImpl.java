@@ -211,6 +211,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
             updatedRecord.put("completedon", eventInfo.get("completedon"));
             lrcProgressdetailsMap.put("duration", eventInfo.get("duration"));
             lrcProgressdetailsMap.put("stateMetaData", eventInfo.get("duration"));
+            lrcProgressdetailsMap.put("max_size", eventInfo.get("duration"));
             updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
         } else {
             Map<String, Object> keyMap = new HashMap<>();
@@ -245,8 +246,9 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
                     int duration = 60 * batchAttributesJson.get("duration").asInt();
                     lrcProgressdetailsMap.put("duration", duration);
                     lrcProgressdetailsMap.put("stateMetaData", duration);
+                    lrcProgressdetailsMap.put("max_size", duration);
                     updatedRecord.put("lrc_progressdetails", objectMapper.writeValueAsString(lrcProgressdetailsMap));
-                    
+
                     Map<String, Object> eventInfo = new HashMap<String, Object>();
                     eventInfo.put("completedon", updatedEndDate);
                     eventInfo.put("duration", duration);
