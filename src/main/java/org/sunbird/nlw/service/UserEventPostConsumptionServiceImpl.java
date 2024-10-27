@@ -196,7 +196,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         object.put("id", userId);
         object.put("type", "IssueCertificate");
         event.put("object", object);
-        producer.push(serverProperties.getUserIssueCertificateForEventTopic(),event);
+        producer.pushWithKey(serverProperties.getUserIssueCertificateForEventTopic(), event, userId);
         logger.info("Pushed kafka message for issue-event-certificate");
     }
 
