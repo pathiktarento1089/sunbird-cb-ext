@@ -132,7 +132,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
                         serverProperties.getUserEventEnrolmentTable(), updateEnrollmentRecords, keyMap);
                 if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
                     logger.info("Successfully updated DB");
-                    if (enrolmentRecord.get("issuedCertificates") == null) {
+                    if (enrolmentRecord.get("issuedCertificates") == null || ((List<?>)enrolmentRecord.get("issuedCertificates")).size() == 0) {
                         generateIssueCertificateEvent(batchid, contentid, Arrays.asList(userid), 100.0, userid,
                                 completedon);
                     }
