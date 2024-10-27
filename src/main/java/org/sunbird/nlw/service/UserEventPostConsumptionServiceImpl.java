@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -193,9 +192,10 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         String cacheKey = contentId + "-" + batchId;
         Integer eventDuration = 0;
         Date eventUpdatedEndDate = null;
-        if (eventInfoCache.containsKey(cacheKey)) {
-            eventDuration = (Integer) eventInfoCache.get("duration");
-            eventUpdatedEndDate = (Date) eventInfoCache.get("completedon");
+        if (eventInfoCache.containsKey(cacheKey)) { 
+            Map<String, Object> eventInfo = (Map<String, Object>) eventInfoCache.get(cacheKey);
+            eventDuration = (Integer) eventInfo.get("duration");
+            eventUpdatedEndDate = (Date) eventInfo.get("completedon");
         } else {
             Map<String, Object> keyMap = new HashMap<>();
             keyMap.put("eventid", contentId);
@@ -253,12 +253,19 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         // Check existing max_size is String or integer
         Integer maxSize = 0;
         if (lrcProgressdetailsMap.get("max_size") instanceof String) {
-            maxSize = Integer.parseInt((String) lrcProgressdetailsMap.get("max_size"));
+            maxSize = (int) Double.parseDouble((String) lrcProgressdetailsMap.get("max_size"));
+        } else if (lrcProgressdetailsMap.get("max_size") instanceof Double) {
+            maxSize = (int) ((double) lrcProgressdetailsMap.get("max_size"));
         } else {
-            maxSize = (Integer) lrcProgressdetailsMap.get("max_size");
+            maxSize = (int) lrcProgressdetailsMap.get("max_size");
         }
 
-        Integer duration = (Integer) lrcProgressdetailsMap.get("duration");
+        Integer duration = 0;
+        if (lrcProgressdetailsMap.get("duration") instanceof Double) {
+            duration = (int) ((double) lrcProgressdetailsMap.get("duration"));
+        } else {
+            duration = (int) lrcProgressdetailsMap.get("duration");
+        }
         Integer status = (Integer) enrolmentRecord.get("status");
         // is this maxSize is minutes or seconds ?
         if (!eventDuration.equals(maxSize)) {
