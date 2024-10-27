@@ -330,7 +330,7 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
             logger.info("User event enrolment found.");
             Map<String, Object> enrolmentRecord = enrolmentRecords.get(0);
             int status = (int) enrolmentRecord.get("status");
-            if (status == 2 && enrolmentRecord.get("issuedCertificate") == null) {
+            if (status == 2 && enrolmentRecord.get("issuedCertificate") == null || ((List<?>)enrolmentRecord.get("issuedCertificates")).size() == 0) {
                 //Status is 2 -- but no certificate... setting this back to 1
                 Map<String, Object> updateEnrollmentRecords = new HashMap<String, Object>();
                 updateEnrollmentRecords.put("status", 1);
