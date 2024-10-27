@@ -81,6 +81,32 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         return response;
     }
 
+    @Override
+    public SBApiResponse processEventUsersForStatus(MultipartFile multipartFile) {
+        SBApiResponse response = ProjectUtil.createDefaultResponse(Constants.USER_EVENT_CONSUMPTION);
+        List<String> headers;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(multipartFile.getInputStream(), StandardCharsets.UTF_8));
+             CSVParser csvParser = new CSVParser(reader, CSVFormat.newFormat(serverProperties.getCsvDelimiter()).withFirstRecordAsHeader())) {
+             headers = new ArrayList<>(csvParser.getHeaderNames());
+             cleanHeaders(headers);
+                for (CSVRecord record : csvParser.getRecords()) {
+                    processRecordForStatus(record);
+                }
+            response.setResponseCode(HttpStatus.OK);
+            response.getResult().put(Constants.MESSAGE, "File processed successfully");
+        } catch (IOException e) {
+            logger.error("Error reading CSV file", e);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrmsg("Failed to process the file: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("An unexpected error occurred", e);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrmsg("An unexpected error occurred: " + e.getMessage());
+        }
+        eventInfoCache.clear();
+        return response;
+    }
+
     private void processRecord(CSVRecord record) throws IOException {
         String userid = record.get("userid");
         String contentid = record.get("contentid");
@@ -292,5 +318,39 @@ public class UserEventPostConsumptionServiceImpl implements UserEventPostConsump
         logger.info("Updated completedOn with event end_date: " + eventUpdatedEndDate);
 
         return updatedRecord;
+    }
+
+    private void processRecordForStatus(CSVRecord record) throws IOException {
+        String userid = record.get("userid");
+        String contentid = record.get("contentid");
+        String batchid = record.get("batchid");
+        logger.info(String.format("Processing User event enrolment. UserId: %s, EventId: %s, BatchId: %s", userid, contentid, batchid));
+        List<Map<String, Object>> enrolmentRecords = fetchEnrolmentRecordsForUser(userid, contentid, batchid);
+        if (!enrolmentRecords.isEmpty()) {
+            logger.info("User event enrolment found.");
+            Map<String, Object> enrolmentRecord = enrolmentRecords.get(0);
+            int status = (int) enrolmentRecord.get("status");
+            if (status == 2 && enrolmentRecord.get("issuedCertificate") == null) {
+                //Status is 2 -- but no certificate... setting this back to 1
+                Map<String, Object> updateEnrollmentRecords = new HashMap<String, Object>();
+                updateEnrollmentRecords.put("status", 1);
+                Map<String, Object> keyMap = new HashMap<>();
+                keyMap.put(Constants.USER_ID, userid);
+                keyMap.put(Constants.CONTENT_ID_KEY, contentid);
+                keyMap.put(Constants.CONTEXT_ID_CAMEL, contentid);
+                keyMap.put(Constants.BATCH_ID, batchid);
+                Map<String, Object> resp = cassandraOperation.updateRecord(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME,
+                        serverProperties.getUserEventEnrolmentTable(), updateEnrollmentRecords, keyMap);
+                if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                    logger.info("Successfully updated status to 1"); 
+                } else {
+                    logger.error("Failed to update status to 1");
+                }
+            } else {
+                logger.info("Skipping record - doesn't match criteria.");
+            }
+        } else {
+            logger.info("User event enrolment not found.");
+        }
     }
 }

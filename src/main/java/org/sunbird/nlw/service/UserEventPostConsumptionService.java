@@ -8,4 +8,5 @@ import org.sunbird.common.model.SBApiResponse;
  */
 public interface UserEventPostConsumptionService {
     SBApiResponse processEventUsersForCertificateAndKarmaPoints(MultipartFile multipartFile);
+    SBApiResponse processEventUsersForStatus(MultipartFile multipartFile);
 }
