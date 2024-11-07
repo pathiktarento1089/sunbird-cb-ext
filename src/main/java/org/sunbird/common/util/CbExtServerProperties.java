@@ -916,6 +916,17 @@ public class CbExtServerProperties {
 	@Value("${questionSet.publish}")
 	private String questionSetPublish;
 
+	@Value("${url.custom.self.registration}")
+	private String urlCustomerSelfRegistration;
+
+	@Value("${qr.custom.self.registration.upload.container.name}")
+	private String qrCustomerSelfRegistrationContainerName;
+
+	@Value("${qr.custom.self.registration.upload.folder.name}")
+	private String qrCustomerSelfRegistrationFolderName;
+
+	@Value("${qr.custom.self.registration.upload.path}")
+	private String qrCustomerSelfRegistrationPath;
 	@Value("${cios.logs.cloud.folder.name}")
 	private String ciosFileLogsCloudFolderName;
 
@@ -3173,6 +3184,38 @@ public class CbExtServerProperties {
 
 	public void setCqfAssessmentPostPublishTopic(String cqfAssessmentPostPublishTopic) {
 		this.cqfAssessmentPostPublishTopic = cqfAssessmentPostPublishTopic;
+	}
+
+	public String getUrlCustomerSelfRegistration() {
+		return urlCustomerSelfRegistration;
+	}
+
+	public void setUrlCustomerSelfRegistration(String urlCustomerSelfRegistration) {
+		this.urlCustomerSelfRegistration = urlCustomerSelfRegistration;
+	}
+
+	public String getQrCustomerSelfRegistrationContainerName() {
+		return qrCustomerSelfRegistrationContainerName;
+	}
+
+	public void setQrCustomerSelfRegistrationContainerName(String qrCustomerSelfRegistrationContainerName) {
+		this.qrCustomerSelfRegistrationContainerName = qrCustomerSelfRegistrationContainerName;
+	}
+
+	public String getQrCustomerSelfRegistrationFolderName() {
+		return qrCustomerSelfRegistrationFolderName;
+	}
+
+	public void setQrCustomerSelfRegistrationFolderName(String qrCustomerSelfRegistrationFolderName) {
+		this.qrCustomerSelfRegistrationFolderName = qrCustomerSelfRegistrationFolderName;
+	}
+
+	public String getQrCustomerSelfRegistrationPath() {
+		return qrCustomerSelfRegistrationPath;
+	}
+
+	public void setQrCustomerSelfRegistrationPath(String qrCustomerSelfRegistrationPath) {
+		this.qrCustomerSelfRegistrationPath = qrCustomerSelfRegistrationPath;
 	}
 
 	public String getCiosFileLogsCloudFolderName() {
