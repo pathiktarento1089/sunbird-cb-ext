@@ -109,7 +109,6 @@ public class BPReportConsumer {
 
     public void generateBPReport(Map<String, Object> request) throws IOException {
 
-        Workbook workbook = new XSSFWorkbook();
         int pendingUserCount = 0;
         int rejectedUserCount = 0;
         int approvedUserCount = 0;
@@ -117,8 +116,8 @@ public class BPReportConsumer {
         String courseId = (String) request.get(Constants.COURSE_ID);
         String batchId = (String) request.get(Constants.BATCH_ID);
         String orgId = (String) request.get(Constants.ORG_ID);
-        String surveyId = (String) request.get(Constants.SURVEY_ID);
-        try {
+
+        try (Workbook workbook = new XSSFWorkbook()) {
 
             Map<String, Object> batchReadApiResp = getBatchDetails(courseId, batchId);
             if (ObjectUtils.isEmpty(batchReadApiResp)) {
@@ -134,12 +133,11 @@ public class BPReportConsumer {
                 return;
             }
 
-            List<Map<String, Object>> surveyResponse = getSurveyResponse(surveyId, null);
+            String surveyId = (String) request.get(Constants.SURVEY_ID);
+            // Get survey data if survey ID is present
+            Map<String, Object> dataObject = getSurveyData(request);
+
             Sheet sheet = workbook.createSheet("Enrollment Report");
-
-            Map<String, Object> firstResponse = surveyResponse.get(0);
-            Map<String, Object> dataObject = (Map<String, Object>) firstResponse.get(Constants.DATA_OBJECT);
-
             // Create header row and apply styles
             createHeaderRow(workbook, sheet, batchReadApiResp, dataObject, headerKeyMapping);
             int rowNum = 1;
@@ -167,11 +165,10 @@ public class BPReportConsumer {
                         logger.warn("No user details found for userId: {}", userId);
                         continue;
                     }
-                    List<Map<String, Object>> userSurveyResponse = getSurveyResponse(surveyId, null);
+                    List<Map<String, Object>> userSurveyResponse = StringUtils.isNotEmpty(surveyId) ? getSurveyResponse(surveyId, null) : new ArrayList<>();
                     Map<String, Object> userInfo = getUserInfo((Map<String, Object>) userDetails.get(userId));
                     String enrollmentStatus = getEnrollmentStatus(wfStatusEntity);
-                    // Process or save the report with userInfo, enrollmentStatus, and surveyResponse.
-                    processReport(userInfo, enrollmentStatus, userSurveyResponse.get(0), sheet, headerKeyMapping, rowNum);
+                    processReport(userInfo, enrollmentStatus, userSurveyResponse.isEmpty() ? new HashMap<>() : userSurveyResponse.get(0), sheet, headerKeyMapping, rowNum);
 
                 } catch (Exception e) {
                     logger.error("Error processing report for userId: {}", userId, e);
@@ -184,15 +181,21 @@ public class BPReportConsumer {
         } catch (Exception e) {
             logger.error("Error processing report", e);
             updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
-        } finally {
-            // Closing workbook to prevent memory leaks
-            try {
-                workbook.close();
-            } catch (IOException e) {
-                logger.error("Error while closing the workbook", e);
+        }
+    }
+
+    private Map<String, Object> getSurveyData(Map<String, Object> request) {
+        String surveyId = (String) request.get(Constants.SURVEY_ID);
+        if (StringUtils.isNotEmpty(surveyId)) {
+            List<Map<String, Object>> surveyResponse = getSurveyResponse(surveyId, null);
+            if (!CollectionUtils.isEmpty(surveyResponse)) {
+                Map<String, Object> firstResponse = surveyResponse.get(0);
+                if (firstResponse != null && firstResponse.get(Constants.DATA_OBJECT) instanceof Map) {
+                    return (Map<String, Object>) firstResponse.get(Constants.DATA_OBJECT);
+                }
             }
         }
-
+        return new HashMap<>();
     }
 
     private Map<String, Object> getBatchDetails(String courseId, String batchId) {
@@ -606,9 +609,6 @@ public class BPReportConsumer {
         }
         if (StringUtils.isEmpty((String) inputDataMap.get(Constants.BATCH_ID))) {
             errList.add("Batch Id ID is missing");
-        }
-        if (StringUtils.isEmpty((String) inputDataMap.get(Constants.SURVEY_ID))) {
-            errList.add("Survey ID is missing");
         }
         if (!errList.isEmpty()) {
             str.append("Failed to Validate Course Batch Details. Error Details - [").append(errList.toString()).append("]");

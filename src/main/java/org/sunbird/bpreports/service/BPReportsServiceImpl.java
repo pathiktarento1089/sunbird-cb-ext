@@ -28,10 +28,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class BPReportsServiceImpl implements BPReportsService {
@@ -138,10 +135,6 @@ public class BPReportsServiceImpl implements BPReportsService {
             updateErrorDetails(response, Constants.ORG_ID_KEY_MISSING, HttpStatus.BAD_REQUEST);
             return response;
         }
-        if (StringUtils.isEmpty((String) requestBody.get(Constants.SURVEY_ID))) {
-            updateErrorDetails(response, Constants.SURVEY_ID_MISSING, HttpStatus.BAD_REQUEST);
-            return response;
-        }
         return null;
     }
 
@@ -153,23 +146,29 @@ public class BPReportsServiceImpl implements BPReportsService {
 
     private SBApiResponse insertReportDetailsInDBAndTriggerKafkaEvent(String userId, Map<String, Object> requestBody) {
         SBApiResponse response = ProjectUtil.createDefaultResponse(Constants.BP_REPORT_GENERATE_API);
-
+        String orgId = (String) requestBody.get(Constants.ORG_ID);
+        String courseId = (String) requestBody.get(Constants.COURSE_ID);
+        String batchId = (String) requestBody.get(Constants.BATCH_ID);
         try {
             Map<String, Object> dbRequest = new HashMap<>();
-            dbRequest.put(Constants.ORG_ID, requestBody.get(Constants.ORG_ID));
-            dbRequest.put(Constants.COURSE_ID, requestBody.get(Constants.COURSE_ID));
-            dbRequest.put(Constants.BATCH_ID, requestBody.get(Constants.BATCH_ID));
-            dbRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
+            dbRequest.put(Constants.ORG_ID, orgId);
+            dbRequest.put(Constants.COURSE_ID, courseId);
+            dbRequest.put(Constants.BATCH_ID, batchId);
+            if (StringUtils.isNotEmpty((String) requestBody.get(Constants.SURVEY_ID))) {
+                dbRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
+            }
             dbRequest.put(Constants.STATUS, Constants.STATUS_IN_PROGRESS_UPPERCASE);
             dbRequest.put(Constants.CREATED_BY, userId);
             SBApiResponse dbResponse = cassandraOperation.insertRecord(Constants.SUNBIRD_KEY_SPACE_NAME, Constants.BP_ENROLMENT_REPORT_TABLE, dbRequest);
 
             if (dbResponse.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
                 Map<String, Object> kafkaRequest = new HashMap<>();
-                kafkaRequest.put(Constants.ORG_ID, requestBody.get(Constants.ORG_ID));
-                kafkaRequest.put(Constants.COURSE_ID, requestBody.get(Constants.COURSE_ID));
-                kafkaRequest.put(Constants.BATCH_ID, requestBody.get(Constants.BATCH_ID));
-                kafkaRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
+                kafkaRequest.put(Constants.ORG_ID, orgId);
+                kafkaRequest.put(Constants.COURSE_ID, courseId);
+                kafkaRequest.put(Constants.BATCH_ID, batchId);
+                if (StringUtils.isNotEmpty((String) requestBody.get(Constants.SURVEY_ID))) {
+                    kafkaRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
+                }
                 kafkaRequest.put(Constants.STATUS, Constants.STATUS_IN_PROGRESS_UPPERCASE);
                 kafkaRequest.put(Constants.CREATED_BY, userId);
                 kafkaProducer.push(serverProperties.getKafkaTopicBPReport(), kafkaRequest);
@@ -180,6 +179,7 @@ public class BPReportsServiceImpl implements BPReportsService {
             } else {
                 logger.error("Error while inserting record in the DB");
                 updateErrorDetails(response, "Error while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
+                updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
                 return response;
             }
 
@@ -196,28 +196,21 @@ public class BPReportsServiceImpl implements BPReportsService {
 
     private SBApiResponse updateReportDetailsInDBAndTriggerKafkaEvent(String userId, Map<String, Object> requestBody) {
         SBApiResponse response = ProjectUtil.createDefaultResponse(Constants.BP_REPORT_GENERATE_API);
+        String orgId = (String) requestBody.get(Constants.ORG_ID);
+        String courseId = (String) requestBody.get(Constants.COURSE_ID);
+        String batchId = (String) requestBody.get(Constants.BATCH_ID);
         try {
-            Map<String, Object> compositeKey = new HashMap<>();
-            Map<String, Object> updateAttributes = new HashMap<>();
-            compositeKey.put(Constants.ORG_ID, requestBody.get(Constants.ORG_ID));
-            compositeKey.put(Constants.COURSE_ID, requestBody.get(Constants.COURSE_ID));
-            compositeKey.put(Constants.BATCH_ID, requestBody.get(Constants.BATCH_ID));
 
-            updateAttributes.put(Constants.STATUS, Constants.STATUS_IN_PROGRESS_UPPERCASE);
-            updateAttributes.put(Constants.CREATED_BY, userId);
-            updateAttributes.put(Constants.FILE_NAME, null);
-            updateAttributes.put(Constants.DOWNLOAD_LINK, null);
-            updateAttributes.put(Constants.PENDING_USER, 0);
-            updateAttributes.put(Constants.REJECTED_USER, 0);
-            updateAttributes.put(Constants.APPROVED_USER, 0);
-            Map<String, Object> updateResponse = cassandraOperation.updateRecord(Constants.SUNBIRD_KEY_SPACE_NAME, Constants.BP_ENROLMENT_REPORT_TABLE, updateAttributes, compositeKey);
+            Map<String, Object> dbResponse = updateDataBase(orgId, courseId, batchId, null, null, Constants.STATUS_IN_PROGRESS_UPPERCASE, 0, 0, 0, null);
 
-            if (updateResponse.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+            if (dbResponse.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
                 Map<String, Object> kafkaRequest = new HashMap<>();
-                kafkaRequest.put(Constants.ORG_ID, requestBody.get(Constants.ORG_ID));
-                kafkaRequest.put(Constants.COURSE_ID, requestBody.get(Constants.COURSE_ID));
-                kafkaRequest.put(Constants.BATCH_ID, requestBody.get(Constants.BATCH_ID));
-                kafkaRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
+                kafkaRequest.put(Constants.ORG_ID, orgId);
+                kafkaRequest.put(Constants.COURSE_ID, courseId);
+                kafkaRequest.put(Constants.BATCH_ID, batchId);
+                if (StringUtils.isNotEmpty((String) requestBody.get(Constants.SURVEY_ID))) {
+                    kafkaRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
+                }
                 kafkaRequest.put(Constants.STATUS, Constants.STATUS_IN_PROGRESS_UPPERCASE);
                 kafkaRequest.put(Constants.CREATED_BY, userId);
                 kafkaProducer.push(serverProperties.getKafkaTopicBPReport(), kafkaRequest);
@@ -234,6 +227,7 @@ public class BPReportsServiceImpl implements BPReportsService {
         } catch (Exception e) {
             logger.error("Error while inserting record in the DB", e);
             updateErrorDetails(response, "Error while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
+            updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
             return response;
 
         }
@@ -389,6 +383,23 @@ public class BPReportsServiceImpl implements BPReportsService {
         } catch (Exception e) {
             logger.warn("Failed to delete temporary file: {}, Exception: {}", filePath, e);
         }
+    }
+
+    private Map<String, Object> updateDataBase(String orgId, String courseId, String batchId, String downloadUrl, String fileName, String status, int pendingUserCount, int approvedUserCount, int rejectedUserCount, Date lastReportGeneratedOn) {
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put(Constants.ORG_ID, orgId);
+        compositeKey.put(Constants.COURSE_ID, courseId);
+        compositeKey.put(Constants.BATCH_ID, batchId);
+
+        Map<String, Object> updateAttributes = new HashMap<>();
+        updateAttributes.put(Constants.DOWNLOAD_LINK, downloadUrl);
+        updateAttributes.put(Constants.FILE_NAME, fileName);
+        updateAttributes.put(Constants.STATUS, status);
+        updateAttributes.put(Constants.PENDING_USER, pendingUserCount);
+        updateAttributes.put(Constants.APPROVED_USER, approvedUserCount);
+        updateAttributes.put(Constants.REJECTED_USER, rejectedUserCount);
+        updateAttributes.put(Constants.LAST_REPORT_GENERATED_ON, lastReportGeneratedOn);
+        return cassandraOperation.updateRecord(Constants.SUNBIRD_KEY_SPACE_NAME, Constants.BP_ENROLMENT_REPORT_TABLE, updateAttributes, compositeKey);
     }
 
 }
