@@ -314,7 +314,7 @@ public class BPReportConsumer {
 
             Map<String, Object> personalDetails = (Map<String, Object>) profileDetails.get(Constants.PERSONAL_DETAILS);
             if (MapUtils.isNotEmpty(personalDetails)) {
-                userInfo.put(Constants.EMAIL, personalDetails.get(Constants.PRIMARY_EMAIL));
+                userInfo.put(Constants.PRIMARY_EMAIL, personalDetails.get(Constants.PRIMARY_EMAIL));
                 userInfo.put(Constants.MOBILE, personalDetails.get(Constants.MOBILE));
                 userInfo.put(Constants.GENDER, personalDetails.get(Constants.GENDER));
                 userInfo.put(Constants.DOB, personalDetails.get(Constants.DOB));
