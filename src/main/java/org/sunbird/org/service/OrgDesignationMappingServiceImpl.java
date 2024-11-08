@@ -574,7 +574,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                 while (rowIterator.hasNext()) { // to get the totalNumber of record to get the rows which have data
                     Row nextRow = rowIterator.next();
                     boolean allColumnsEmpty = true;
-                    for (int colIndex = 0; colIndex < 1; colIndex++) { // Only check the first 4 columns
+                    for (int colIndex = 0; colIndex < 1; colIndex++) { // Only check the first columns
                         Cell cell = nextRow.getCell(colIndex);
 
                         if (cell != null) {
@@ -620,6 +620,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                     }
                     if (allColumnsEmpty) continue;
                     logger.info("CompetencyDesignationMapping:: Record " + count++);
+                    Thread.sleep(500);
                     List<Map<String, Object>> getAllDesignationForOrg = populateDataFromFrameworkTerm(frameworkId);
                     Map<String, Object> orgFrameworkObject = null;
                     List<Map<String, Object>> orgFrameworkTerms = null;
@@ -764,7 +765,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                 status = Constants.FAILED_UPPERCASE;
             }
             updateOrgCompetencyDesignationMappingBulkUploadStatus(inputDataMap.get(Constants.ROOT_ORG_ID), inputDataMap.get(Constants.IDENTIFIER),
-                    status, totalRecordsCount, noOfSuccessfulRecords, failedRecordsCount);
+                    status, totalNumberOfRecordInSheet, noOfSuccessfulRecords, failedRecordsCount);
         } catch (Exception e) {
             logger.error(String.format("Error in Process Bulk Upload %s", e.getMessage()), e);
             updateOrgCompetencyDesignationMappingBulkUploadStatus(inputDataMap.get(Constants.ROOT_ORG_ID), inputDataMap.get(Constants.IDENTIFIER),
