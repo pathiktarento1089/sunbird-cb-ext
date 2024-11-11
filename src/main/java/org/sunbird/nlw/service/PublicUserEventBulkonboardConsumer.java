@@ -220,7 +220,7 @@ public class PublicUserEventBulkonboardConsumer {
      */
     private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails) throws IOException {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
-
+        long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE)).getTime() - 10 * 1000;
         if (record.size() > expectedFieldCount) {
             markRecordAsFailed(updatedRecord, "Number of fields in the record exceeds expected number. Please check your data.");
             return updatedRecord;
@@ -250,12 +250,12 @@ public class PublicUserEventBulkonboardConsumer {
                     markRecordAsFailed(updatedRecord, "Failed to update enrollment");
                     return updatedRecord;
                 }
-                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, eventDetails);
-                karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, eventDetails);
+                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent);
+                karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
                 logger.info("Successfully updated the enrollment for the user: userId = {}, email = {}", userId, email);
             }else {
-                markRecordAsFailed(updatedRecord, "Already enrolled and completed the event");
-                return updatedRecord;
+                etsForEvent = ((Date) enrollmentRecord.get(Constants.COMPLETED_ON)).getTime();
+                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent);
             }
         } else {
             SBApiResponse enrollmentResponse = enrollNLWEvent(userId, eventId, batchId, eventDetails);
@@ -263,8 +263,8 @@ public class PublicUserEventBulkonboardConsumer {
                 markRecordAsFailed(updatedRecord, "Failed to enroll");
                 return updatedRecord;
             }
-            certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, eventDetails);
-            karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, eventDetails);
+            certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent);
+            karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
             logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 
         }
