@@ -135,7 +135,7 @@ public class BPReportConsumer {
 
             String surveyId = (String) request.get(Constants.SURVEY_ID);
             // Get survey data if survey ID is present
-            Map<String, Object> dataObject = getSurveyData(request);
+            Map<String, Object> dataObject = getSurveyData(surveyId, null);
 
             Sheet sheet = workbook.createSheet("Enrollment Report");
             // Create header row and apply styles
@@ -143,6 +143,10 @@ public class BPReportConsumer {
             int rowNum = 1;
 
             for (WfStatusEntity wfStatusEntity : wfStatusEntities) {
+                String currentStatus = wfStatusEntity.getCurrentStatus();
+                if (Constants.WITHDRAWN.equalsIgnoreCase(currentStatus)) {
+                    continue;
+                }
                 String userId = wfStatusEntity.getUserId();
                 if (StringUtils.isBlank(userId)) {
                     logger.warn("User ID is blank for WfStatusEntity: {}", wfStatusEntity);
@@ -165,10 +169,10 @@ public class BPReportConsumer {
                         logger.warn("No user details found for userId: {}", userId);
                         continue;
                     }
-                    List<Map<String, Object>> userSurveyResponse = StringUtils.isNotEmpty(surveyId) ? getSurveyResponse(surveyId, null) : new ArrayList<>();
+                    Map<String, Object> userSurveyDataObject = StringUtils.isNotEmpty(surveyId) ? getSurveyData(surveyId, userId) : new HashMap<>();
                     Map<String, Object> userInfo = getUserInfo((Map<String, Object>) userDetails.get(userId));
-                    String enrollmentStatus = getEnrollmentStatus(wfStatusEntity);
-                    processReport(userInfo, enrollmentStatus, userSurveyResponse.isEmpty() ? new HashMap<>() : userSurveyResponse.get(0), sheet, headerKeyMapping, rowNum);
+                    String enrollmentStatus = getEnrollmentStatus(currentStatus);
+                    processReport(userInfo, enrollmentStatus, MapUtils.isNotEmpty(userSurveyDataObject) ? userSurveyDataObject : new HashMap<>(), sheet, headerKeyMapping, rowNum);
 
                 } catch (Exception e) {
                     logger.error("Error processing report for userId: {}", userId, e);
@@ -184,10 +188,9 @@ public class BPReportConsumer {
         }
     }
 
-    private Map<String, Object> getSurveyData(Map<String, Object> request) {
-        String surveyId = (String) request.get(Constants.SURVEY_ID);
+    private Map<String, Object> getSurveyData(String surveyId, String userId) {
         if (StringUtils.isNotEmpty(surveyId)) {
-            List<Map<String, Object>> surveyResponse = getSurveyResponse(surveyId, null);
+            List<Map<String, Object>> surveyResponse = getSurveyResponse(surveyId, userId);
             if (!CollectionUtils.isEmpty(surveyResponse)) {
                 Map<String, Object> firstResponse = surveyResponse.get(0);
                 if (firstResponse != null && firstResponse.get(Constants.DATA_OBJECT) instanceof Map) {
@@ -364,8 +367,7 @@ public class BPReportConsumer {
         return userInfo;
     }
 
-    private String getEnrollmentStatus(WfStatusEntity wfStatusEntity) {
-        String currentStatus = wfStatusEntity.getCurrentStatus();
+    private String getEnrollmentStatus(String currentStatus) {
         if (Constants.SEND_FOR_MDO_APPROVAL.equalsIgnoreCase(currentStatus)) {
             return Constants.PENDING_WITH_MDO;
         } else if (Constants.SEND_FOR_PC_APPROVAL.equalsIgnoreCase(currentStatus)) {
@@ -402,7 +404,7 @@ public class BPReportConsumer {
             sourceBuilder.query(boolQuery);
 
             // Sorting by timestamp in ascending order
-            sourceBuilder.sort("timestamp", SortOrder.ASC);
+            sourceBuilder.sort("timestamp", SortOrder.DESC);
 
             // Execute the search request
             SearchResponse searchResponse = indexerService.getEsResult(
@@ -432,16 +434,13 @@ public class BPReportConsumer {
         return result;
     }
 
-    private void processReport(Map<String, Object> userInfo, String enrollmentStatus, Map<String, Object> surveyResponse, Sheet sheet, Map<String, Object> headerKeyMapping, int rowNum) {
+    private void processReport(Map<String, Object> userInfo, String enrollmentStatus, Map<String, Object> userSurveyDataObject, Sheet sheet, Map<String, Object> headerKeyMapping, int rowNum) {
         try {
             // Create a new sheet or get existing one based on requirement
-            Map<String, Object> reportInfo = prepareReportInfo(userInfo, enrollmentStatus, surveyResponse);
+            Map<String, Object> reportInfo = prepareReportInfo(userInfo, enrollmentStatus, userSurveyDataObject);
 
             // Add user data to the sheet
             fillDataRows(sheet, rowNum, headerKeyMapping, reportInfo);
-
-            // Auto-size columns for readability
-            autoSizeColumns(sheet, headerKeyMapping.size());
 
         } catch (Exception e) {
             logger.error("Error while processing the report", e);
@@ -476,7 +475,7 @@ public class BPReportConsumer {
             }
 
             Cell cell = headerRow.createCell(currentColumnIndex++);
-            cell.setCellValue(displayName);
+            cell.setCellValue(displayName.trim());
             cell.setCellStyle(headerStyle);
 
             // Extract and map the last part of the field key to display name
@@ -504,7 +503,7 @@ public class BPReportConsumer {
             String questionKey = entry.getKey();
             if (!headerKeyMapping.containsKey(questionKey)) {
                 cell = headerRow.createCell(currentColumnIndex++);
-                cell.setCellValue(questionKey);
+                cell.setCellValue(questionKey.trim());
                 cell.setCellStyle(headerStyle);
                 formQuestionsList.add(questionKey);
             }
@@ -519,7 +518,8 @@ public class BPReportConsumer {
         Font font = workbook.createFont();
         font.setBold(true);
         headerStyle.setFont(font);
-        headerStyle.setAlignment(HorizontalAlignment.CENTER);  // Optional: center align
+        headerStyle.setAlignment(HorizontalAlignment.LEFT);
+        headerStyle.setWrapText(true);
         return headerStyle;
     }
 
@@ -532,52 +532,37 @@ public class BPReportConsumer {
                 Map<String, Object> formAllQuestionsAns = (Map<String, Object>) reportInfo.get(columnKey);
                 List<String> formAllRequiredQuestionskey = (List<String>) headerKeyMapping.get(columnKey);
 
-                if (formAllRequiredQuestionskey != null && formAllQuestionsAns != null) {
-                    for (String requiredQuestionKey : formAllRequiredQuestionskey) {
-                        if (StringUtils.isNotEmpty(formAllQuestionsAns.get(requiredQuestionKey).toString())) {
-                            row.createCell(cellNum++).setCellValue(formAllQuestionsAns.get(requiredQuestionKey).toString());
-                        } else {
-                            row.createCell(cellNum++).setCellValue("N/A");
+                if (!CollectionUtils.isEmpty(formAllRequiredQuestionskey)) {
+                    if (formAllQuestionsAns != null) {
+                        for (String requiredQuestionKey : formAllRequiredQuestionskey) {
+                            String answer = (String) formAllQuestionsAns.get(requiredQuestionKey);
+                            row.createCell(cellNum++).setCellValue(StringUtils.isNotEmpty(answer) ? answer.trim() : "N/A");
+                            sheet.autoSizeColumn(cellNum - 1);
                         }
+                    } else {
+                        row.createCell(cellNum++).setCellValue("No Questions/Ans Available");
+                        sheet.autoSizeColumn(cellNum - 1);
                     }
-                } else {
-                    row.createCell(cellNum++).setCellValue("No Questions Available");
                 }
             } else {
                 Object value = reportInfo.get(columnKey);
-                if (!ObjectUtils.isEmpty(value)) {
-                    row.createCell(cellNum++).setCellValue(value.toString());
-                } else {
-                    row.createCell(cellNum++).setCellValue("N/A");
-                }
+                row.createCell(cellNum++).setCellValue(!ObjectUtils.isEmpty(value) ? value.toString().trim() : "N/A");
             }
+            sheet.autoSizeColumn(cellNum - 1);
         }
     }
 
-    private void autoSizeColumns(Sheet sheet, int columnCount) {
-        for (int i = 0; i < columnCount; i++) {
-            sheet.autoSizeColumn(i);
-        }
-    }
-
-    private Map<String, Object> prepareReportInfo(Map<String, Object> userInfo, String enrollmentStatus, Map<String, Object> surveyResponse) {
+    private Map<String, Object> prepareReportInfo(Map<String, Object> userInfo, String enrollmentStatus, Map<String, Object> userSurveyDataObject) {
 
         Map<String, Object> reportInfo = new HashMap<>(userInfo);
         reportInfo.put(Constants.ENROLLMENT_STATUS, enrollmentStatus);
 
         // Extract and add survey questions
         Map<String, Object> formQuestions = new LinkedHashMap<>();
-        if (surveyResponse != null && surveyResponse.containsKey(Constants.DATA_OBJECT)) {
-            Map<String, Object> surveyData = (Map<String, Object>) surveyResponse.get(Constants.DATA_OBJECT);
-
-            if (surveyData != null) {
-                for (Map.Entry<String, Object> surveyDetails : surveyData.entrySet()) {
-                    formQuestions.put(surveyDetails.getKey(), surveyDetails.getValue());
-                }
-            }
+        if (MapUtils.isNotEmpty(userSurveyDataObject)) {
+            formQuestions.putAll(userSurveyDataObject);
+            reportInfo.put("formQuestions", formQuestions);
         }
-        reportInfo.put("formQuestions", formQuestions);
-
         return reportInfo;
     }
 

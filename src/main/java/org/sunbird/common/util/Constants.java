@@ -1273,6 +1273,7 @@ public class Constants {
 	public static final String ENROLLMENT_STATUS_COLUMN = "Enrollment Status";
 	public static final String ENROLLMENT_STATUS = "enrollmentStatus";
 	public static final String LAST_REPORT_GENERATED_ON = "lastReportGeneratedOn";
+	public static final String WITHDRAWN = "WITHDRAWN";
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");
