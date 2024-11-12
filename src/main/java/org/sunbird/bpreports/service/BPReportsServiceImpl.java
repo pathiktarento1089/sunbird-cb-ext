@@ -87,6 +87,7 @@ public class BPReportsServiceImpl implements BPReportsService {
             keyMap.put(Constants.ORG_ID, orgId);
             keyMap.put(Constants.COURSE_ID, courseId);
             keyMap.put(Constants.BATCH_ID, batchId);
+            keyMap.put(Constants.REPORT_REQUESTER, requestBody.get(Constants.REPORT_REQUESTER));
 
             List<Map<String, Object>> existingReportDetails = cassandraOperation.getRecordsByProperties(Constants.KEYSPACE_SUNBIRD,
                     Constants.BP_ENROLMENT_REPORT_TABLE, keyMap, null);
@@ -135,6 +136,15 @@ public class BPReportsServiceImpl implements BPReportsService {
             updateErrorDetails(response, Constants.ORG_ID_KEY_MISSING, HttpStatus.BAD_REQUEST);
             return response;
         }
+        if (StringUtils.isEmpty((String) requestBody.get(Constants.REPORT_REQUESTER))) {
+            updateErrorDetails(response, Constants.REPORT_REQUESTER_MISSING, HttpStatus.BAD_REQUEST);
+            return response;
+        } else {
+            if (!Constants.BP_REPORT_REQUESTER_ROLES.contains((String) requestBody.get(Constants.REPORT_REQUESTER))) {
+                updateErrorDetails(response, Constants.REPORT_REQUESTER_ERR_MSG, HttpStatus.BAD_REQUEST);
+                return response;
+            }
+        }
         return null;
     }
 
@@ -149,11 +159,13 @@ public class BPReportsServiceImpl implements BPReportsService {
         String orgId = (String) requestBody.get(Constants.ORG_ID);
         String courseId = (String) requestBody.get(Constants.COURSE_ID);
         String batchId = (String) requestBody.get(Constants.BATCH_ID);
+        String reportRequester = (String) requestBody.get(Constants.REPORT_REQUESTER);
         try {
             Map<String, Object> dbRequest = new HashMap<>();
             dbRequest.put(Constants.ORG_ID, orgId);
             dbRequest.put(Constants.COURSE_ID, courseId);
             dbRequest.put(Constants.BATCH_ID, batchId);
+            dbRequest.put(Constants.REPORT_REQUESTER, reportRequester);
             if (StringUtils.isNotEmpty((String) requestBody.get(Constants.SURVEY_ID))) {
                 dbRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
             }
@@ -166,6 +178,7 @@ public class BPReportsServiceImpl implements BPReportsService {
                 kafkaRequest.put(Constants.ORG_ID, orgId);
                 kafkaRequest.put(Constants.COURSE_ID, courseId);
                 kafkaRequest.put(Constants.BATCH_ID, batchId);
+                kafkaRequest.put(Constants.REPORT_REQUESTER, reportRequester);
                 if (StringUtils.isNotEmpty((String) requestBody.get(Constants.SURVEY_ID))) {
                     kafkaRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
                 }
@@ -179,7 +192,7 @@ public class BPReportsServiceImpl implements BPReportsService {
             } else {
                 logger.error("Error while inserting record in the DB");
                 updateErrorDetails(response, "Error while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
-                updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+                updateDataBase(orgId, courseId, batchId, reportRequester, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
                 return response;
             }
 
@@ -199,15 +212,17 @@ public class BPReportsServiceImpl implements BPReportsService {
         String orgId = (String) requestBody.get(Constants.ORG_ID);
         String courseId = (String) requestBody.get(Constants.COURSE_ID);
         String batchId = (String) requestBody.get(Constants.BATCH_ID);
+        String reportRequester = String.valueOf(requestBody.get(Constants.REPORT_REQUESTER));
         try {
 
-            Map<String, Object> dbResponse = updateDataBase(orgId, courseId, batchId, null, null, Constants.STATUS_IN_PROGRESS_UPPERCASE, 0, 0, 0, null);
+            Map<String, Object> dbResponse = updateDataBase(orgId, courseId, batchId, reportRequester, null, null, Constants.STATUS_IN_PROGRESS_UPPERCASE, 0, 0, 0, null);
 
             if (dbResponse.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
                 Map<String, Object> kafkaRequest = new HashMap<>();
                 kafkaRequest.put(Constants.ORG_ID, orgId);
                 kafkaRequest.put(Constants.COURSE_ID, courseId);
                 kafkaRequest.put(Constants.BATCH_ID, batchId);
+                kafkaRequest.put(Constants.REPORT_REQUESTER, reportRequester);
                 if (StringUtils.isNotEmpty((String) requestBody.get(Constants.SURVEY_ID))) {
                     kafkaRequest.put(Constants.SURVEY_ID, requestBody.get(Constants.SURVEY_ID));
                 }
@@ -227,7 +242,7 @@ public class BPReportsServiceImpl implements BPReportsService {
         } catch (Exception e) {
             logger.error("Error while inserting record in the DB", e);
             updateErrorDetails(response, "Error while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
-            updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+            updateDataBase(orgId, courseId, batchId, reportRequester, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
             return response;
 
         }
@@ -269,6 +284,7 @@ public class BPReportsServiceImpl implements BPReportsService {
             propertyMap.put(Constants.ORG_ID, orgId);
             propertyMap.put(Constants.COURSE_ID, courseId);
             propertyMap.put(Constants.BATCH_ID, batchId);
+            propertyMap.put(Constants.REPORT_REQUESTER, request.get(Constants.REPORT_REQUESTER));
             List<Map<String, Object>> reportList = cassandraOperation.getRecordsByProperties(Constants.SUNBIRD_KEY_SPACE_NAME,
                     Constants.BP_ENROLMENT_REPORT_TABLE, propertyMap, null);
             if (CollectionUtils.isEmpty(reportList)) {
@@ -356,6 +372,15 @@ public class BPReportsServiceImpl implements BPReportsService {
             updateErrorDetails(response, Constants.ORG_ID_KEY_MISSING, HttpStatus.BAD_REQUEST);
             return response;
         }
+        if (StringUtils.isEmpty((String) requestBody.get(Constants.REPORT_REQUESTER))) {
+            updateErrorDetails(response, Constants.REPORT_REQUESTER_MISSING, HttpStatus.BAD_REQUEST);
+            return response;
+        } else {
+            if (!Constants.BP_REPORT_REQUESTER_ROLES.contains((String) requestBody.get(Constants.REPORT_REQUESTER))) {
+                updateErrorDetails(response, Constants.REPORT_REQUESTER_ERR_MSG, HttpStatus.BAD_REQUEST);
+                return response;
+            }
+        }
         return null;
     }
 
@@ -385,11 +410,12 @@ public class BPReportsServiceImpl implements BPReportsService {
         }
     }
 
-    private Map<String, Object> updateDataBase(String orgId, String courseId, String batchId, String downloadUrl, String fileName, String status, int pendingUserCount, int approvedUserCount, int rejectedUserCount, Date lastReportGeneratedOn) {
+    private Map<String, Object> updateDataBase(String orgId, String courseId, String batchId, String reportRequester, String downloadUrl, String fileName, String status, int pendingUserCount, int approvedUserCount, int rejectedUserCount, Date lastReportGeneratedOn) {
         Map<String, Object> compositeKey = new HashMap<>();
         compositeKey.put(Constants.ORG_ID, orgId);
         compositeKey.put(Constants.COURSE_ID, courseId);
         compositeKey.put(Constants.BATCH_ID, batchId);
+        compositeKey.put(Constants.REPORT_REQUESTER, reportRequester);
 
         Map<String, Object> updateAttributes = new HashMap<>();
         updateAttributes.put(Constants.DOWNLOAD_LINK, downloadUrl);

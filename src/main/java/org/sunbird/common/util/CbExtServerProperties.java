@@ -949,6 +949,9 @@ public class CbExtServerProperties {
 	@Value("${bp.user.enrolment.report.container.name}")
 	private String bpEnrolmentReportContainerName;
 
+	@Value("${bp.report.default.field.map}")
+	private String bpEnrolmentReportDefaultFields;
+
 	public String getCiosCloudIconFolderName() {
 		return ciosCloudIconFolderName;
 	}
@@ -3273,4 +3276,12 @@ public class CbExtServerProperties {
 	public void setBpEnrolmentReportContainerName(String bpEnrolmentReportContainerName) {
 		this.bpEnrolmentReportContainerName = bpEnrolmentReportContainerName;
   }
+
+	public String getBpEnrolmentReportDefaultFields() {
+		return bpEnrolmentReportDefaultFields;
+	}
+
+	public void setBpEnrolmentReportDefaultFields(String bpEnrolmentReportDefaultFields) {
+		this.bpEnrolmentReportDefaultFields = bpEnrolmentReportDefaultFields;
+	}
 }
