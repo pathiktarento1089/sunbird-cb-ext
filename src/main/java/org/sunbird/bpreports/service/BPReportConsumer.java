@@ -357,7 +357,7 @@ public class BPReportConsumer {
 
             Map<String, Object> additionalProperties = (Map<String, Object>) profileDetails.get(Constants.ADDITIONAL_PROPERTIES);
             if (MapUtils.isNotEmpty(additionalProperties)) {
-                userInfo.put(Constants.EXTERNAL_SYSTEM_ID, additionalProperties.get(Constants.ADDITIONAL_PROPERTIES));
+                userInfo.put(Constants.EXTERNAL_SYSTEM_ID, additionalProperties.get(Constants.EXTERNAL_SYSTEM_ID));
             }
 
             Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
@@ -366,6 +366,8 @@ public class BPReportConsumer {
                 userInfo.put(Constants.CIVIL_SERVICE_TYPE, cadreDetails.get(Constants.CIVIL_SERVICE_TYPE));
                 userInfo.put(Constants.CIVIL_SERVICE_NAME, cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
                 userInfo.put(Constants.CADRE_NAME, cadreDetails.get(Constants.CADRE_NAME));
+                userInfo.put(Constants.CADRE_BATCH, cadreDetails.get(Constants.CADRE_BATCH));
+                userInfo.put(Constants.CONTROLLING_AUTHORITY, cadreDetails.get(Constants.CONTROLLING_AUTHORITY));
             } else {
                 userInfo.put(Constants.CADRE_DETAILS, Constants.NO);
             }
@@ -510,6 +512,9 @@ public class BPReportConsumer {
         // Populate header row with form questions that are not already mapped
         for (Map.Entry<String, Object> entry : formQuestionsMap.entrySet()) {
             String questionKey = entry.getKey();
+            if (Constants.COURSE_ID_AND_NAME.equalsIgnoreCase(questionKey)) {
+                continue;
+            }
             if (!headerKeyMapping.containsKey(questionKey)) {
                 cell = headerRow.createCell(currentColumnIndex++);
                 cell.setCellValue(questionKey.trim());

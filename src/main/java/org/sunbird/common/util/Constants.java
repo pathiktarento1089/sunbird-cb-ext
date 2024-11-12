@@ -1274,6 +1274,7 @@ public class Constants {
 	public static final String ENROLLMENT_STATUS = "enrollmentStatus";
 	public static final String LAST_REPORT_GENERATED_ON = "lastReportGeneratedOn";
 	public static final String WITHDRAWN = "WITHDRAWN";
+	public static final String COURSE_ID_AND_NAME ="Course ID and Name";
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");
