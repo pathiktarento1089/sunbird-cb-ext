@@ -361,15 +361,15 @@ public class BPReportConsumer {
             }
 
             Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
-            if (profileDetails.containsKey(Constants.CADRE_DETAILS) && MapUtils.isEmpty(cadreDetails)) {
-                userInfo.put(Constants.CADRE_DETAILS, Constants.NO);
-            } else if (MapUtils.isNotEmpty(cadreDetails)) {
+            if (MapUtils.isNotEmpty(cadreDetails)) {
                 userInfo.put(Constants.CADRE_DETAILS, Constants.YES);
                 userInfo.put(Constants.CIVIL_SERVICE_TYPE, cadreDetails.get(Constants.CIVIL_SERVICE_TYPE));
                 userInfo.put(Constants.CIVIL_SERVICE_NAME, cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
                 userInfo.put(Constants.CADRE_NAME, cadreDetails.get(Constants.CADRE_NAME));
                 userInfo.put(Constants.CADRE_BATCH, cadreDetails.get(Constants.CADRE_BATCH));
                 userInfo.put(Constants.CONTROLLING_AUTHORITY, cadreDetails.get(Constants.CONTROLLING_AUTHORITY));
+            } else {
+                userInfo.put(Constants.CADRE_DETAILS, Constants.NO);
             }
 
         }
