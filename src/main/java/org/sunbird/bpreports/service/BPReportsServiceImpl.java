@@ -87,7 +87,7 @@ public class BPReportsServiceImpl implements BPReportsService {
             keyMap.put(Constants.ORG_ID, orgId);
             keyMap.put(Constants.COURSE_ID, courseId);
             keyMap.put(Constants.BATCH_ID, batchId);
-            keyMap.put(Constants.REPORT_REQUESTER, requestBody.get(Constants.REPORT_REQUESTER));
+            keyMap.put(Constants.REPORT_REQUESTER, request.get(Constants.REPORT_REQUESTER));
 
             List<Map<String, Object>> existingReportDetails = cassandraOperation.getRecordsByProperties(Constants.KEYSPACE_SUNBIRD,
                     Constants.BP_ENROLMENT_REPORT_TABLE, keyMap, null);
