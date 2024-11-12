@@ -115,21 +115,22 @@ public class BPReportConsumer {
         Map<String, Object> headerKeyMapping = new LinkedHashMap<>();
         String courseId = (String) request.get(Constants.COURSE_ID);
         String batchId = (String) request.get(Constants.BATCH_ID);
-        String orgId = (String) request.get(Constants.ORG_ID);
+        String adminOrgId = (String) request.get(Constants.ORG_ID);
 
         try (Workbook workbook = new XSSFWorkbook()) {
 
             Map<String, Object> batchReadApiResp = getBatchDetails(courseId, batchId);
             if (ObjectUtils.isEmpty(batchReadApiResp)) {
                 logger.info("No batch details found for batchId: {}", batchId);
-                updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+                updateDataBase(adminOrgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
                 return;
             }
-
+            List<String> createdFor = (List<String>) batchReadApiResp.get(Constants.CREATED_FOR);
+            String contentOrgid = createdFor.get(0);
             List<WfStatusEntity> wfStatusEntities = getAllWfStatusEntitiesByBatchId(batchId);
             if (CollectionUtils.isEmpty(wfStatusEntities)) {
                 logger.info("No workflow status entities found for batchId: {}", batchId);
-                updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+                updateDataBase(adminOrgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
                 return;
             }
 
@@ -154,6 +155,19 @@ public class BPReportConsumer {
                 }
 
                 try {
+                    Map<String, Object> propertyMap = new HashMap<>();
+                    propertyMap.put(Constants.ID, userId);
+                    Map<String, Object> userDetails = cassandraOperation.getRecordsByProperties(
+                            Constants.SUNBIRD_KEY_SPACE_NAME, Constants.TABLE_USER, propertyMap, null, Constants.ID);
+                    if (MapUtils.isEmpty(userDetails)) {
+                        logger.warn("No user details found for userId: {}", userId);
+                        continue;
+                    }
+                    Map<String, Object> userDetailsObj = (Map<String, Object>) userDetails.get(userId);
+                    String userOrgId = (String) userDetailsObj.get(Constants.ROOT_ORG_ID);
+                    if (!adminOrgId.equalsIgnoreCase(contentOrgid) && !adminOrgId.equalsIgnoreCase(userOrgId)) {
+                        continue;
+                    }
                     if (Constants.APPROVED_UPPER_CASE.equalsIgnoreCase(wfStatusEntity.getCurrentStatus())) {
                         approvedUserCount++;
                     } else if (Constants.REJECTED_UPPER_CASE.equalsIgnoreCase(wfStatusEntity.getCurrentStatus())) {
@@ -161,16 +175,8 @@ public class BPReportConsumer {
                     } else {
                         pendingUserCount++;
                     }
-                    Map<String, Object> propertyMap = new HashMap<>();
-                    propertyMap.put(Constants.ID, userId);
-                    Map<String, Object> userDetails = cassandraOperation.getRecordsByProperties(
-                            Constants.SUNBIRD_KEY_SPACE_NAME, Constants.TABLE_USER, propertyMap, null, Constants.ID);
-                    if (userDetails == null || userDetails.isEmpty()) {
-                        logger.warn("No user details found for userId: {}", userId);
-                        continue;
-                    }
                     Map<String, Object> userSurveyDataObject = StringUtils.isNotEmpty(surveyId) ? getSurveyData(surveyId, userId) : new HashMap<>();
-                    Map<String, Object> userInfo = getUserInfo((Map<String, Object>) userDetails.get(userId));
+                    Map<String, Object> userInfo = getUserInfo(userDetailsObj);
                     String enrollmentStatus = getEnrollmentStatus(currentStatus);
                     processReport(userInfo, enrollmentStatus, MapUtils.isNotEmpty(userSurveyDataObject) ? userSurveyDataObject : new HashMap<>(), sheet, headerKeyMapping, rowNum);
 
@@ -180,11 +186,11 @@ public class BPReportConsumer {
                 rowNum++;
             }
 
-            uploadBPReportAndUpdateDatabase(batchId, orgId, courseId, workbook, pendingUserCount, approvedUserCount, rejectedUserCount);
+            uploadBPReportAndUpdateDatabase(batchId, adminOrgId, courseId, workbook, pendingUserCount, approvedUserCount, rejectedUserCount);
 
         } catch (Exception e) {
             logger.error("Error processing report", e);
-            updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+            updateDataBase(adminOrgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
         }
     }
 
@@ -207,7 +213,8 @@ public class BPReportConsumer {
         propertyMap.put(Constants.BATCH_ID, batchId);
 
         List<String> fields = new ArrayList<>();
-        fields.add("batch_attributes");
+        fields.add(Constants.BATCH_ATTRIBUTES);
+        fields.add(Constants.CREATED_FOR);
 
         List<Map<String, Object>> batchDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(Constants.SUNBIRD_COURSES_KEY_SPACE_NAME, Constants.TABLE_COURSE_BATCH, propertyMap, fields);
         return batchDetails.get(0);
@@ -477,6 +484,7 @@ public class BPReportConsumer {
             Cell cell = headerRow.createCell(currentColumnIndex++);
             cell.setCellValue(displayName.trim());
             cell.setCellStyle(headerStyle);
+            sheet.autoSizeColumn(currentColumnIndex - 1);
 
             // Extract and map the last part of the field key to display name
             String[] fieldKeyParts = ((String) profileField.get(Constants.FIELD)).split("\\.");
@@ -494,6 +502,7 @@ public class BPReportConsumer {
         Cell cell = headerRow.createCell(currentColumnIndex++);
         cell.setCellValue(Constants.ENROLLMENT_STATUS_COLUMN);
         cell.setCellStyle(headerStyle);
+        sheet.autoSizeColumn(currentColumnIndex - 1);
         headerKeyMapping.put(Constants.ENROLLMENT_STATUS, Constants.ENROLLMENT_STATUS_COLUMN);
 
         List<String> formQuestionsList = new ArrayList<>();
@@ -505,6 +514,7 @@ public class BPReportConsumer {
                 cell = headerRow.createCell(currentColumnIndex++);
                 cell.setCellValue(questionKey.trim());
                 cell.setCellStyle(headerStyle);
+                sheet.autoSizeColumn(currentColumnIndex - 1);
                 formQuestionsList.add(questionKey);
             }
         }
@@ -535,7 +545,7 @@ public class BPReportConsumer {
                 if (!CollectionUtils.isEmpty(formAllRequiredQuestionskey)) {
                     if (formAllQuestionsAns != null) {
                         for (String requiredQuestionKey : formAllRequiredQuestionskey) {
-                            String answer = (String) formAllQuestionsAns.get(requiredQuestionKey);
+                            String answer = String.valueOf(formAllQuestionsAns.get(requiredQuestionKey));
                             row.createCell(cellNum++).setCellValue(StringUtils.isNotEmpty(answer) ? answer.trim() : "N/A");
                             sheet.autoSizeColumn(cellNum - 1);
                         }
@@ -546,7 +556,7 @@ public class BPReportConsumer {
                 }
             } else {
                 Object value = reportInfo.get(columnKey);
-                row.createCell(cellNum++).setCellValue(!ObjectUtils.isEmpty(value) ? value.toString().trim() : "N/A");
+                row.createCell(cellNum++).setCellValue(!ObjectUtils.isEmpty(value) ? String.valueOf(value).trim() : "N/A");
             }
             sheet.autoSizeColumn(cellNum - 1);
         }
