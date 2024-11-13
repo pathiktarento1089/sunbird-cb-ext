@@ -1275,6 +1275,13 @@ public class Constants {
 	public static final String LAST_REPORT_GENERATED_ON = "lastReportGeneratedOn";
 	public static final String WITHDRAWN = "WITHDRAWN";
 	public static final String COURSE_ID_AND_NAME ="Course ID and Name";
+	public static final String REPORT_REQUESTER = "reportRequester";
+	public static final String REPORT_REQUESTER_MISSING = "Report requester is missing";
+	public static final String MDO_LEADER = "MDO_LEADER";
+	public static final String PROGRAM_COORDINATOR = "PROGRAM_COORDINATOR";
+	public static final String REPORT_REQUESTER_ERR_MSG = "Report requester is invalid";
+	public static final String IS_DATA_AVAILABLE = "isDataAvailable";
+	public static final List<String> BP_REPORT_REQUESTER_ROLES = Arrays.asList(MDO_ADMIN, MDO_LEADER, PROGRAM_COORDINATOR);
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");

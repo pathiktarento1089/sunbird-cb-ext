@@ -47,7 +47,6 @@ public class BPReportConsumer {
     @Autowired
     ObjectMapper mapper;
 
-
     @Autowired
     WfStatusEntityRepository wfStatusEntityRepository;
 
@@ -116,13 +115,14 @@ public class BPReportConsumer {
         String courseId = (String) request.get(Constants.COURSE_ID);
         String batchId = (String) request.get(Constants.BATCH_ID);
         String adminOrgId = (String) request.get(Constants.ORG_ID);
+        String reportRequester = (String) request.get(Constants.REPORT_REQUESTER);
 
         try (Workbook workbook = new XSSFWorkbook()) {
 
             Map<String, Object> batchReadApiResp = getBatchDetails(courseId, batchId);
             if (ObjectUtils.isEmpty(batchReadApiResp)) {
                 logger.info("No batch details found for batchId: {}", batchId);
-                updateDataBase(adminOrgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+                updateDataBase(adminOrgId, courseId, batchId, reportRequester, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
                 return;
             }
             List<String> createdFor = (List<String>) batchReadApiResp.get(Constants.CREATED_FOR);
@@ -130,7 +130,7 @@ public class BPReportConsumer {
             List<WfStatusEntity> wfStatusEntities = getAllWfStatusEntitiesByBatchId(batchId);
             if (CollectionUtils.isEmpty(wfStatusEntities)) {
                 logger.info("No workflow status entities found for batchId: {}", batchId);
-                updateDataBase(adminOrgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+                updateDataBase(adminOrgId, courseId, batchId, reportRequester, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
                 return;
             }
 
@@ -140,7 +140,16 @@ public class BPReportConsumer {
 
             Sheet sheet = workbook.createSheet("Enrollment Report");
             // Create header row and apply styles
-            createHeaderRow(workbook, sheet, batchReadApiResp, dataObject, headerKeyMapping);
+            if (Constants.MDO_ADMIN.equalsIgnoreCase(reportRequester) || Constants.MDO_LEADER.equalsIgnoreCase(reportRequester)) {
+                String bpReportDefaultFieldsStr = serverProperties.getBpEnrolmentReportDefaultFields();
+                Map<String, String> bpReportDefaultFieldsMap = mapper.readValue(bpReportDefaultFieldsStr, new TypeReference<LinkedHashMap<String, Object>>() {
+                });
+                headerKeyMapping.putAll(bpReportDefaultFieldsMap);
+                createHeaderRowWithDefaultFields(workbook, sheet, dataObject, headerKeyMapping);
+            } else {
+                mandatoryProfileFieldsKeyMappingForPC(batchReadApiResp, headerKeyMapping);
+                createHeaderRow(workbook, sheet, batchReadApiResp, dataObject, headerKeyMapping);
+            }
             int rowNum = 1;
 
             for (WfStatusEntity wfStatusEntity : wfStatusEntities) {
@@ -186,11 +195,11 @@ public class BPReportConsumer {
                 rowNum++;
             }
 
-            uploadBPReportAndUpdateDatabase(batchId, adminOrgId, courseId, workbook, pendingUserCount, approvedUserCount, rejectedUserCount);
+            uploadBPReportAndUpdateDatabase(adminOrgId, courseId, batchId, reportRequester, workbook, pendingUserCount, approvedUserCount, rejectedUserCount);
 
         } catch (Exception e) {
             logger.error("Error processing report", e);
-            updateDataBase(adminOrgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+            updateDataBase(adminOrgId, courseId, batchId, reportRequester, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
         }
     }
 
@@ -220,7 +229,7 @@ public class BPReportConsumer {
         return batchDetails.get(0);
     }
 
-    private void uploadBPReportAndUpdateDatabase(String batchId, String orgId, String courseId, Workbook workbook, int pendingUserCount, int approvedUserCount, int rejectedUserCount) {
+    private void uploadBPReportAndUpdateDatabase(String orgId, String courseId, String batchId, String reportRequester, Workbook workbook, int pendingUserCount, int approvedUserCount, int rejectedUserCount) {
         String fileName;
         try {
             // Construct file name and path
@@ -272,18 +281,19 @@ public class BPReportConsumer {
             }
             logger.info("File uploaded successfully. Download URL: {}", downloadUrl);
 
-            updateDataBase(orgId, courseId, batchId, downloadUrl, fileName, Constants.COMPLETED_UPPER_CASE, pendingUserCount, approvedUserCount, rejectedUserCount, new Date());
+            updateDataBase(orgId, courseId, batchId, reportRequester, downloadUrl, fileName, Constants.COMPLETED_UPPER_CASE, pendingUserCount, approvedUserCount, rejectedUserCount, new Date());
         } catch (IOException e) {
             logger.error("Error while writing the Excel file", e);
-            updateDataBase(orgId, courseId, batchId, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
+            updateDataBase(orgId, courseId, batchId, reportRequester, null, null, Constants.FAILED_UPPERCASE, 0, 0, 0, new Date());
         }
     }
 
-    private void updateDataBase(String orgId, String courseId, String batchId, String downloadUrl, String fileName, String status, int pendingUserCount, int approvedUserCount, int rejectedUserCount, Date lastReportGeneratedOn) {
+    private void updateDataBase(String orgId, String courseId, String batchId, String reportRequester, String downloadUrl, String fileName, String status, int pendingUserCount, int approvedUserCount, int rejectedUserCount, Date lastReportGeneratedOn) {
         Map<String, Object> compositeKey = new HashMap<>();
         compositeKey.put(Constants.ORG_ID, orgId);
         compositeKey.put(Constants.COURSE_ID, courseId);
         compositeKey.put(Constants.BATCH_ID, batchId);
+        compositeKey.put(Constants.REPORT_REQUESTER, reportRequester);
         Map<String, Object> updateAttributes = new HashMap<>();
         if (StringUtils.isNotEmpty(downloadUrl)) {
             updateAttributes.put(Constants.DOWNLOAD_LINK, downloadUrl);
@@ -361,15 +371,15 @@ public class BPReportConsumer {
             }
 
             Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
-            if (MapUtils.isNotEmpty(cadreDetails)) {
+            if (profileDetails.containsKey(Constants.CADRE_DETAILS) && MapUtils.isEmpty(cadreDetails)) {
+                userInfo.put(Constants.CADRE_DETAILS, Constants.NO);
+            } else if (MapUtils.isNotEmpty(cadreDetails)) {
                 userInfo.put(Constants.CADRE_DETAILS, Constants.YES);
                 userInfo.put(Constants.CIVIL_SERVICE_TYPE, cadreDetails.get(Constants.CIVIL_SERVICE_TYPE));
                 userInfo.put(Constants.CIVIL_SERVICE_NAME, cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
                 userInfo.put(Constants.CADRE_NAME, cadreDetails.get(Constants.CADRE_NAME));
                 userInfo.put(Constants.CADRE_BATCH, cadreDetails.get(Constants.CADRE_BATCH));
                 userInfo.put(Constants.CONTROLLING_AUTHORITY, cadreDetails.get(Constants.CONTROLLING_AUTHORITY));
-            } else {
-                userInfo.put(Constants.CADRE_DETAILS, Constants.NO);
             }
 
         }
@@ -610,9 +620,98 @@ public class BPReportConsumer {
         if (StringUtils.isEmpty((String) inputDataMap.get(Constants.BATCH_ID))) {
             errList.add("Batch Id ID is missing");
         }
+        if (StringUtils.isEmpty((String) inputDataMap.get(Constants.REPORT_REQUESTER))) {
+            errList.add("Report requester is missing");
+        }
         if (!errList.isEmpty()) {
             str.append("Failed to Validate Course Batch Details. Error Details - [").append(errList.toString()).append("]");
         }
         return errList;
+    }
+
+    private void createHeaderRowWithDefaultFields(Workbook workbook, Sheet sheet,
+                                                  Map<String, Object> formQuestionsMap, Map<String, Object> headerKeyMapping) throws IOException {
+
+        String bpReportDefaultFieldsStr = serverProperties.getBpEnrolmentReportDefaultFields();
+        Map<String, String> bpReportDefaultFieldsMap = mapper.readValue(bpReportDefaultFieldsStr, new TypeReference<LinkedHashMap<String, Object>>() {
+        });
+        headerKeyMapping.putAll(bpReportDefaultFieldsMap);
+        Row headerRow = sheet.createRow(0);
+        CellStyle headerStyle = createHeaderCellStyle(workbook);
+        int currentColumnIndex = 0;
+
+        // Populate header row with mandatory profile field display names
+        for (Map.Entry<String, String> entry : bpReportDefaultFieldsMap.entrySet()) {
+            String displayName = entry.getValue();
+            if (displayName == null || displayName.isEmpty()) {
+                throw new IllegalArgumentException("Profile field display name cannot be null or empty");
+            }
+
+            Cell cell = headerRow.createCell(currentColumnIndex++);
+            cell.setCellValue(displayName.trim());
+            cell.setCellStyle(headerStyle);
+            sheet.autoSizeColumn(currentColumnIndex - 1);
+        }
+
+        // Add a column for Enrollment Status
+        Cell cell = headerRow.createCell(currentColumnIndex++);
+        cell.setCellValue(Constants.ENROLLMENT_STATUS_COLUMN);
+        cell.setCellStyle(headerStyle);
+        sheet.autoSizeColumn(currentColumnIndex - 1);
+        headerKeyMapping.put(Constants.ENROLLMENT_STATUS, Constants.ENROLLMENT_STATUS_COLUMN);
+
+        List<String> formQuestionsList = new ArrayList<>();
+
+        // Populate header row with form questions that are not already mapped
+        for (Map.Entry<String, Object> entry : formQuestionsMap.entrySet()) {
+            String questionKey = entry.getKey();
+            if (Constants.COURSE_ID_AND_NAME.equalsIgnoreCase(questionKey)) {
+                continue;
+            }
+            if (!headerKeyMapping.containsKey(questionKey)) {
+                cell = headerRow.createCell(currentColumnIndex++);
+                cell.setCellValue(questionKey.trim());
+                cell.setCellStyle(headerStyle);
+                sheet.autoSizeColumn(currentColumnIndex - 1);
+                formQuestionsList.add(questionKey);
+            }
+        }
+
+        headerKeyMapping.put("formQuestions", formQuestionsList);
+    }
+
+    private void mandatoryProfileFieldsKeyMappingForPC(Map<String, Object> batchDetails, Map<String, Object> headerKeyMapping) throws IOException {
+
+        String batchAttributesStr = (String) batchDetails.get(Constants.BATCH_ATTRIBUTES);
+        if (batchAttributesStr == null) {
+            throw new IllegalArgumentException("Batch attributes cannot be null");
+        }
+
+        Map<String, Object> batchAttributes = mapper.readValue(batchAttributesStr, new TypeReference<Map<String, Object>>() {
+        });
+
+        List<Map<String, Object>> mandatoryProfileFields = (List<Map<String, Object>>) batchAttributes.get(Constants.BATCH_ENROL_MANDATORY_PROFILE_FIELDS);
+        if (mandatoryProfileFields == null) {
+            throw new IllegalArgumentException("Mandatory profile fields cannot be null");
+        }
+
+        // Populate header row with mandatory profile field display names
+        for (Map<String, Object> profileField : mandatoryProfileFields) {
+            String displayName = profileField.get(Constants.DISPLAY_NAME).toString();
+            if (displayName == null || displayName.isEmpty()) {
+                throw new IllegalArgumentException("Profile field display name cannot be null or empty");
+            }
+
+            // Extract and map the last part of the field key to display name
+            String[] fieldKeyParts = ((String) profileField.get(Constants.FIELD)).split("\\.");
+            String fieldKey = fieldKeyParts[fieldKeyParts.length - 1];
+
+            // Map the field key to the display name
+            if (fieldKey.equalsIgnoreCase(Constants.FIRSTNAME)) {
+                headerKeyMapping.put(Constants.FIRSTNAME, displayName);
+            } else {
+                headerKeyMapping.put(fieldKey, displayName);
+            }
+        }
     }
 }
