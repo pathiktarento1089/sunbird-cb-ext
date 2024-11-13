@@ -620,6 +620,9 @@ public class BPReportConsumer {
         if (StringUtils.isEmpty((String) inputDataMap.get(Constants.BATCH_ID))) {
             errList.add("Batch Id ID is missing");
         }
+        if (StringUtils.isEmpty((String) inputDataMap.get(Constants.REPORT_REQUESTER))) {
+            errList.add("Report requester is missing");
+        }
         if (!errList.isEmpty()) {
             str.append("Failed to Validate Course Batch Details. Error Details - [").append(errList.toString()).append("]");
         }
