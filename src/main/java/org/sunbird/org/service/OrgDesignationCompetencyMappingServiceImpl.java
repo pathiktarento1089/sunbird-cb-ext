@@ -720,6 +720,7 @@ public class OrgDesignationCompetencyMappingServiceImpl implements OrgDesignatio
                     }
                     if (allColumnsEmpty) continue;
                     logger.info("CompetencyDesignationMapping:: Record " + count++);
+                    Thread.sleep(500);
                     List<Map<String, Object>> getAllDesignationForOrg = populateDataFromFrameworkTerm(frameworkId);
                     Map<String, Object> designationFrameworkObject = null;
                     Map<String, Object> competencyFrameworkObject = null;
@@ -918,7 +919,7 @@ public class OrgDesignationCompetencyMappingServiceImpl implements OrgDesignatio
                 status = Constants.FAILED_UPPERCASE;
             }
             updateOrgCompetencyDesignationMappingBulkUploadStatus(inputDataMap.get(Constants.ROOT_ORG_ID), inputDataMap.get(Constants.IDENTIFIER),
-                    status, totalRecordsCount, noOfSuccessfulRecords, failedRecordsCount);
+                    status, totalNumberOfRecordInSheet, noOfSuccessfulRecords, failedRecordsCount);
         } catch (Exception e) {
             logger.error(String.format("Error in Process Bulk Upload %s", e.getMessage()), e);
             updateOrgCompetencyDesignationMappingBulkUploadStatus(inputDataMap.get(Constants.ROOT_ORG_ID), inputDataMap.get(Constants.IDENTIFIER),
