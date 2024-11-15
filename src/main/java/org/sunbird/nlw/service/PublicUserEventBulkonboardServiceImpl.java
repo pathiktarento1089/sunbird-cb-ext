@@ -49,10 +49,14 @@ public class PublicUserEventBulkonboardServiceImpl implements PublicUserEventBul
     CassandraOperation cassandraOperation;
 
     @Override
-    public SBApiResponse bulkOnboard(MultipartFile mFile, String eventId, String batchId) {
+    public SBApiResponse bulkOnboard(MultipartFile mFile, String eventId, String batchId, String publicCert) {
         SBApiResponse response = ProjectUtil.createDefaultResponse(Constants.PUBLIC_USER_EVENT_BULKONBOARD);
         try {
 
+            boolean publicCertValue = false;
+            if (StringUtils.isNotEmpty(publicCert) && (publicCert.equalsIgnoreCase(Constants.TRUE) || publicCert.equalsIgnoreCase(Constants.FALSE))) {
+                publicCertValue = Boolean.parseBoolean(publicCert);
+            }
             String errMsg = validateEventDetailsAndCSVFile(eventId, batchId, mFile);
             if (StringUtils.isNotEmpty(errMsg)) {
                 setErrorData(response, errMsg);
@@ -89,6 +93,7 @@ public class PublicUserEventBulkonboardServiceImpl implements PublicUserEventBul
 
             uploadedFile.put(Constants.EVENT_ID, eventId);
             uploadedFile.put(Constants.BATCH_ID, batchId);
+            uploadedFile.put(Constants.PUBLIC_CERT, publicCertValue);
             kafkaProducer.push(serverConfig.getPublicUserEventBulkOnboardTopic(), uploadedFile);
 
             response.getParams().setStatus(Constants.SUCCESSFUL);
@@ -230,10 +235,10 @@ public class PublicUserEventBulkonboardServiceImpl implements PublicUserEventBul
         } finally {
             try {
                 File file = new File(Constants.LOCAL_BASE_PATH + fileName);
-                if(file.exists()) {
+                if (file.exists()) {
                     file.delete();
                 }
-            } catch(Exception e1) {
+            } catch (Exception e1) {
             }
         }
     }

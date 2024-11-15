@@ -29,6 +29,7 @@ import org.sunbird.storage.service.StorageService;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -110,6 +111,7 @@ public class PublicUserEventBulkonboardConsumer {
     private void processPublicUserEventBulkOnboard(Map<String, String> inputData) throws IOException {
         String eventId = inputData.get(Constants.EVENT_ID);
         String batchId = inputData.get(Constants.BATCH_ID);
+        boolean publicCert = Boolean.parseBoolean(inputData.get(Constants.PUBLIC_CERT));
         String status = "";
 
         int totalRecordsCount = 0;
@@ -149,7 +151,7 @@ public class PublicUserEventBulkonboardConsumer {
                     CSVFormat.newFormat(serverProperties.getCsvDelimiter()).withFirstRecordAsHeader())) {
                 for (CSVRecord record : csvParser2.getRecords()) {
                     totalRecordsCount++;
-                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails);
+                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails, publicCert);
                     updatedRecords.add(updatedRecord);
 
                     if ("FAILED".equalsIgnoreCase(updatedRecord.get("Status"))) {
@@ -218,7 +220,7 @@ public class PublicUserEventBulkonboardConsumer {
     /**
      * Processes a single CSV record. Returns the updated record with status and error details.
      */
-    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails) throws IOException {
+    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails, boolean publicCert) throws IOException {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
         long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE)).getTime() - 10 * 1000;
         if (record.size() > expectedFieldCount) {
@@ -250,21 +252,27 @@ public class PublicUserEventBulkonboardConsumer {
                     markRecordAsFailed(updatedRecord, "Failed to update enrollment");
                     return updatedRecord;
                 }
-                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent);
-                karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
+                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, publicCert);
+                if (!publicCert) {
+                    karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
+                }
                 logger.info("Successfully updated the enrollment for the user: userId = {}, email = {}", userId, email);
-            }else {
-                etsForEvent = ((Date) enrollmentRecord.get(Constants.COMPLETED_ON)).getTime();
-                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent);
             }
+            //This logic is for reissue certificate. It is not required for now.
+//            else {
+//                etsForEvent = ((Date) enrollmentRecord.get(Constants.COMPLETED_ON)).getTime();
+//                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, publicCert);
+//            }
         } else {
             SBApiResponse enrollmentResponse = enrollNLWEvent(userId, eventId, batchId, eventDetails);
             if (!Constants.SUCCESS.equalsIgnoreCase((String) enrollmentResponse.get(Constants.RESPONSE))) {
                 markRecordAsFailed(updatedRecord, "Failed to enroll");
                 return updatedRecord;
             }
-            certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent);
-            karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
+            certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, publicCert);
+            if (!publicCert) {
+                karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
+            }
             logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 
         }
@@ -430,8 +438,11 @@ public class PublicUserEventBulkonboardConsumer {
         if (StringUtils.isEmpty(inputDataMap.get(Constants.BATCH_ID))) {
             errList.add("Batch ID is not present");
         }
-        if (org.apache.commons.lang.StringUtils.isEmpty(inputDataMap.get(Constants.FILE_NAME))) {
+        if (StringUtils.isEmpty(inputDataMap.get(Constants.FILE_NAME))) {
             errList.add("Filename is not present");
+        }
+        if (StringUtils.isEmpty(inputDataMap.get(Constants.PUBLIC_CERT))) {
+            errList.add("Public Cert Param is not present");
         }
         if (!errList.isEmpty()) {
             str.append("Failed to Validate event Details. Error Details - [").append(errList.toString()).append("]");
@@ -488,8 +499,8 @@ public class PublicUserEventBulkonboardConsumer {
                 String batchAttributesStr = (String) eventBatch.get(Constants.BATCH_ATTRIBUTES_COLUMN);
                 Map<String, Object> batchAttributes = objectMapper.readValue(batchAttributesStr, new TypeReference<Map<String, Object>>() {
                 });
-                eventDetails.put(Constants.START_DATE, prepareEventDateTime((Date) eventBatch.get(Constants.START_DATE_COLUMN), (String) batchAttributes.get(Constants.START_TIME_KEY)));
-                eventDetails.put(Constants.END_DATE, prepareEventDateTime((Date) eventBatch.get(Constants.END_DATE_COLUMN), (String) batchAttributes.get(Constants.END_TIME_KEY)));
+                eventDetails.put(Constants.START_DATE, convertToUTC(prepareEventDateTime((Date) eventBatch.get(Constants.START_DATE_COLUMN), (String) batchAttributes.get(Constants.START_TIME_KEY))));
+                eventDetails.put(Constants.END_DATE, convertToUTC(prepareEventDateTime((Date) eventBatch.get(Constants.END_DATE_COLUMN), (String) batchAttributes.get(Constants.END_TIME_KEY))));
 
                 Object durationObj = batchAttributes.get(Constants.DURATION);
                 long durationInSec = 0;
@@ -573,6 +584,21 @@ public class PublicUserEventBulkonboardConsumer {
         }
 
         return response;
+    }
+
+    private Date convertToUTC(Date date) {
+        if (date == null) return null;
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        try {
+            // Format the date as UTC and parse it back to a Date
+            String utcDateString = sdf.format(date);
+            return sdf.parse(utcDateString); // Return as Date
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
 }
