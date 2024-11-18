@@ -257,6 +257,9 @@ public class PublicUserEventBulkonboardConsumer {
                     karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
                 }
                 logger.info("Successfully updated the enrollment for the user: userId = {}, email = {}", userId, email);
+            } else {
+                markRecordAsFailed(updatedRecord, "Event already completed");
+                return updatedRecord;
             }
             //This logic is for reissue certificate. It is not required for now.
 //            else {
