@@ -58,8 +58,6 @@ public class CertificateServiceImpl {
         edata.put("eventType", "offline");
         if (publicCert) {
             edata.put("certStore", "public");
-        } else {
-            edata.put("certStore", "private");
         }
         edata.put("batchId", batchId);
         edata.put("eventId", eventId);
