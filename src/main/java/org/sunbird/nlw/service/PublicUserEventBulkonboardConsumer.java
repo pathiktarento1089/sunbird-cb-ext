@@ -112,6 +112,7 @@ public class PublicUserEventBulkonboardConsumer {
         String eventId = inputData.get(Constants.EVENT_ID);
         String batchId = inputData.get(Constants.BATCH_ID);
         boolean publicCert = Boolean.parseBoolean(inputData.get(Constants.PUBLIC_CERT));
+        boolean reIssue = Boolean.parseBoolean(inputData.get(Constants.REISSUE));
         String status = "";
 
         int totalRecordsCount = 0;
@@ -151,7 +152,7 @@ public class PublicUserEventBulkonboardConsumer {
                     CSVFormat.newFormat(serverProperties.getCsvDelimiter()).withFirstRecordAsHeader())) {
                 for (CSVRecord record : csvParser2.getRecords()) {
                     totalRecordsCount++;
-                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails, publicCert);
+                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails, publicCert, reIssue);
                     updatedRecords.add(updatedRecord);
 
                     if ("FAILED".equalsIgnoreCase(updatedRecord.get("Status"))) {
@@ -220,7 +221,7 @@ public class PublicUserEventBulkonboardConsumer {
     /**
      * Processes a single CSV record. Returns the updated record with status and error details.
      */
-    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails, boolean publicCert) throws IOException {
+    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails, boolean publicCert, boolean reissue) throws IOException {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
         long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE)).getTime() - 10 * 1000;
         if (record.size() > expectedFieldCount) {
@@ -257,15 +258,13 @@ public class PublicUserEventBulkonboardConsumer {
                     karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
                 }
                 logger.info("Successfully updated the enrollment for the user: userId = {}, email = {}", userId, email);
+            } else if (status == 2 && reissue) {
+                etsForEvent = ((Date) enrollmentRecord.get(Constants.COMPLETED_ON)).getTime();
+                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, publicCert);
             } else {
                 markRecordAsFailed(updatedRecord, "Event already completed");
                 return updatedRecord;
             }
-            //This logic is for reissue certificate. It is not required for now.
-//            else {
-//                etsForEvent = ((Date) enrollmentRecord.get(Constants.COMPLETED_ON)).getTime();
-//                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, publicCert);
-//            }
         } else {
             SBApiResponse enrollmentResponse = enrollNLWEvent(userId, eventId, batchId, eventDetails);
             if (!Constants.SUCCESS.equalsIgnoreCase((String) enrollmentResponse.get(Constants.RESPONSE))) {
@@ -446,6 +445,9 @@ public class PublicUserEventBulkonboardConsumer {
         }
         if (StringUtils.isEmpty(inputDataMap.get(Constants.PUBLIC_CERT))) {
             errList.add("Public Cert Param is not present");
+        }
+        if (StringUtils.isEmpty(inputDataMap.get(Constants.REISSUE))) {
+            errList.add("Reissue Param is not present");
         }
         if (!errList.isEmpty()) {
             str.append("Failed to Validate event Details. Error Details - [").append(errList.toString()).append("]");

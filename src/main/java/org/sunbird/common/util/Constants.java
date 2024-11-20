@@ -1240,6 +1240,7 @@ public class Constants {
 	public static final String PUBLIC_CERT = "publicCert";
 	public static final String TRUE = "true";
 	public static final String FALSE = "false";
+	public static final String REISSUE = "reissue";
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");

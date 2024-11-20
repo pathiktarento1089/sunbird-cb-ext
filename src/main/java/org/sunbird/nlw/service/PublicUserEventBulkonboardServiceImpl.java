@@ -49,13 +49,17 @@ public class PublicUserEventBulkonboardServiceImpl implements PublicUserEventBul
     CassandraOperation cassandraOperation;
 
     @Override
-    public SBApiResponse bulkOnboard(MultipartFile mFile, String eventId, String batchId, String publicCert) {
+    public SBApiResponse bulkOnboard(MultipartFile mFile, String eventId, String batchId, String publicCert, String reissue) {
         SBApiResponse response = ProjectUtil.createDefaultResponse(Constants.PUBLIC_USER_EVENT_BULKONBOARD);
         try {
 
             boolean publicCertValue = false;
+            boolean reissueValue = false;
             if (StringUtils.isNotEmpty(publicCert) && (publicCert.equalsIgnoreCase(Constants.TRUE) || publicCert.equalsIgnoreCase(Constants.FALSE))) {
                 publicCertValue = Boolean.parseBoolean(publicCert);
+            }
+            if (StringUtils.isNotEmpty(reissue) && (reissue.equalsIgnoreCase(Constants.TRUE) || reissue.equalsIgnoreCase(Constants.FALSE))) {
+                reissueValue = Boolean.parseBoolean(reissue);
             }
             String errMsg = validateEventDetailsAndCSVFile(eventId, batchId, mFile);
             if (StringUtils.isNotEmpty(errMsg)) {
@@ -94,6 +98,7 @@ public class PublicUserEventBulkonboardServiceImpl implements PublicUserEventBul
             uploadedFile.put(Constants.EVENT_ID, eventId);
             uploadedFile.put(Constants.BATCH_ID, batchId);
             uploadedFile.put(Constants.PUBLIC_CERT, publicCertValue);
+            uploadedFile.put(Constants.REISSUE, reissueValue);
             kafkaProducer.push(serverConfig.getPublicUserEventBulkOnboardTopic(), uploadedFile);
 
             response.getParams().setStatus(Constants.SUCCESSFUL);
