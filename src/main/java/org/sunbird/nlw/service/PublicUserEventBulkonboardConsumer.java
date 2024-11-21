@@ -246,6 +246,7 @@ public class PublicUserEventBulkonboardConsumer {
         if (MapUtils.isNotEmpty(enrollmentRecord)) {
 
             int status = (int) enrollmentRecord.get(Constants.STATUS);
+            //If enrollment status is not complete
             if (status != 2) {
 
                 Map<String, Object> updateResponse = updateEventEnrollment(userId, eventId, batchId, eventDetails);
@@ -258,14 +259,18 @@ public class PublicUserEventBulkonboardConsumer {
                     karmaPointsService.generateKarmaPointEventAndPushToKafka(userId, eventId, batchId, etsForEvent);
                 }
                 logger.info("Successfully updated the enrollment for the user: userId = {}, email = {}", userId, email);
-            } else if (status == 2 && reissue) {
-                etsForEvent = ((Date) enrollmentRecord.get(Constants.COMPLETED_ON)).getTime();
-                certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, publicCert);
             } else {
-                markRecordAsFailed(updatedRecord, "Event already completed");
-                return updatedRecord;
+                if (reissue) {
+                    //If enrollment status is complete and want to reissue the certificate
+                    etsForEvent = ((Date) enrollmentRecord.get(Constants.COMPLETED_ON)).getTime();
+                    certificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, publicCert);
+                } else {
+                    markRecordAsFailed(updatedRecord, "Event already completed");
+                    return updatedRecord;
+                }
             }
         } else {
+            //If enrollment is not there
             SBApiResponse enrollmentResponse = enrollNLWEvent(userId, eventId, batchId, eventDetails);
             if (!Constants.SUCCESS.equalsIgnoreCase((String) enrollmentResponse.get(Constants.RESPONSE))) {
                 markRecordAsFailed(updatedRecord, "Failed to enroll");
