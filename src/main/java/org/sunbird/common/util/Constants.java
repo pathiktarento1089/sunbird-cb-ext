@@ -1282,6 +1282,10 @@ public class Constants {
 	public static final String REPORT_REQUESTER_ERR_MSG = "Report requester is invalid";
 	public static final String IS_DATA_AVAILABLE = "isDataAvailable";
 	public static final List<String> BP_REPORT_REQUESTER_ROLES = Arrays.asList(MDO_ADMIN, MDO_LEADER, PROGRAM_COORDINATOR);
+	public static final String TRUE = "true";
+	public static final String FALSE = "false";
+	public static final String PUBLIC_CERT = "publicCert";
+	public static final String REISSUE = "reissue";
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");
