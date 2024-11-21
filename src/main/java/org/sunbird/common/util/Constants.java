@@ -1237,6 +1237,10 @@ public class Constants {
 	public static final String USER_EVENT_CONSUMPTION = "api.user.event.consumption";
 	public static final String LRC_PROGRESS_DETAILS_COLUMN="lrc_progressdetails";
 	public static final String API_USER_EVENT_BULK_ONBOARD_STATUS = "api.user.event.bulk.onboard.status";
+	public static final String PUBLIC_CERT = "publicCert";
+	public static final String TRUE = "true";
+	public static final String FALSE = "false";
+	public static final String REISSUE = "reissue";
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");
