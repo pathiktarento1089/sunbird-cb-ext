@@ -247,5 +247,4 @@ public class PublicUserEventBulkonboardServiceImpl implements PublicUserEventBul
             }
         }
     }
-
 }
