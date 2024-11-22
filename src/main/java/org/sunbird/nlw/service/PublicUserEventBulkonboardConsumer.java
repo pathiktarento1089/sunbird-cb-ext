@@ -610,4 +610,5 @@ public class PublicUserEventBulkonboardConsumer {
             return null;
         }
     }
+
 }
