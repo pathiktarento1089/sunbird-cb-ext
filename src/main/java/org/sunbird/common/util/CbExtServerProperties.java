@@ -3245,7 +3245,8 @@ public class CbExtServerProperties {
 	public void setUserEventKarmaPointTopic(String userEventKarmaPointTopic) {
 		this.userEventKarmaPointTopic = userEventKarmaPointTopic;
 	}
-  public String getKafkaTopicBPReport() {
+
+  	public String getKafkaTopicBPReport() {
 		return kafkaTopicBPReport;
 	}
 
