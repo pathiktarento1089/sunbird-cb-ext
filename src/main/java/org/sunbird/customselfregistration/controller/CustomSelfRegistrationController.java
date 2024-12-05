@@ -41,4 +41,9 @@ public class CustomSelfRegistrationController {
         SBApiResponse uploadResponse = customSelfRegistrationService.uploadImageToGCPContainer(multipartFile, authUserToken);
         return new ResponseEntity<>(uploadResponse, uploadResponse.getResponseCode());
     }
+
+    @PostMapping(value = "/isRegistrationQRActive", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<SBApiResponse> isRegistrationQRActive(@Valid @RequestBody Map<String, Object> requestBody) {
+        return new ResponseEntity<>(customSelfRegistrationService.isRegistrationQRActive(requestBody), HttpStatus.OK);
+    }
 }
