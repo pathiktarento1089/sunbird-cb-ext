@@ -972,7 +972,10 @@ public class CbExtServerProperties {
 	@Value("${qr.custom.self.registration.logoupload.path}")
 	private String qrCustomerSelfRegistrationLogoPath;
 
-	@Value("${course.recommendation.designation.redis.key}")
+	@Value("${map.id.counter.enabled}")
+	private String mapIdCounterEnabled;
+
+  @Value("${course.recommendation.designation.redis.key}")
 	private String courseRecommendationsByDesignationKey;
 
 
@@ -3366,11 +3369,20 @@ public class CbExtServerProperties {
 		this.qrCustomerSelfRegistrationLogoPath = qrCustomerSelfRegistrationLogoPath;
 	}
 
-	public String getCourseRecommendationsByDesignationKey() {
+	public String getMapIdCounterEnabled() {
+		return mapIdCounterEnabled;
+	}
+
+	public void setMapIdCounterEnabled(String mapIdCounterEnabled) {
+		this.mapIdCounterEnabled = mapIdCounterEnabled;
+
+	}
+  
+  public String getCourseRecommendationsByDesignationKey() {
 		return courseRecommendationsByDesignationKey;
 	}
 
 	public void setCourseRecommendationsByDesignationKey(String courseRecommendationsByDesignationKey) {
 		this.courseRecommendationsByDesignationKey = courseRecommendationsByDesignationKey;
-	}
+  }
 }
