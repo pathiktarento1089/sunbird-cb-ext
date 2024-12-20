@@ -98,21 +98,19 @@ public class CustomSelfRegistrationServiceImpl implements CustomSelfRegistration
         if (orgId == null) return outgoingResponse;
         String errMsg = validateRequestFields(requestBody, outgoingResponse);
         if(!StringUtils.isEmpty(errMsg)) return outgoingResponse;
-        if (isRegistrationQRCodeActive(orgId)) {
-            outgoingResponse.getParams().setStatus(Constants.FAILED);
-            outgoingResponse.getParams().setErrmsg("QR Code is already active for this org");
-            outgoingResponse.setResponseCode(HttpStatus.OK);
-        }
+        isRegistrationQRCodeActive(orgId);
         //Validate the designation
         if (!isDesignationMappedToOrg(orgId, outgoingResponse)) return outgoingResponse;
         String uniqueId = String.valueOf(System.currentTimeMillis());
         String registrationLink = generateRegistrationLink(orgId,uniqueId);
         String qrCodeFilePath = createQRCodeFilePath(orgId);
         try {
-            File qrCodeFile = generateQRCodeFile(registrationLink, qrCodeFilePath,orgId);
+            File qrCodeFile = generateQRCodeFile(registrationLink, qrCodeFilePath, orgId);
+            File qrCodeLogoFile = QRCode.from(registrationLink).to(ImageType.JPG).withSize(750, 750).file(qrCodeFilePath);
             outgoingResponse = uploadQRCodeFile(qrCodeFile);
-            if (outgoingResponse.getResponseCode() == HttpStatus.OK) {
-                CustomSelfRegistrationModel customSelfRegistrationModel = getCustomSelfRegistrationModel(requestBody,orgId, registrationLink, qrCodeFile, userId,uniqueId);
+            SBApiResponse qrLogoUploadResponse = uploadQRCodeFile(qrCodeLogoFile);
+            if (outgoingResponse.getResponseCode() == HttpStatus.OK && qrLogoUploadResponse.getResponseCode() == HttpStatus.OK) {
+                CustomSelfRegistrationModel customSelfRegistrationModel = getCustomSelfRegistrationModel(requestBody, orgId, registrationLink, qrCodeFile, qrCodeLogoFile,userId, uniqueId);
                 return processSuccessfulUpload(authUserToken, customSelfRegistrationModel, outgoingResponse);
             } else {
                 logger.info("CustomSelfRegistrationServiceImpl::getSelfRegistrationQRAndLink : There was an issue while uploading the QR code");
@@ -496,6 +494,7 @@ public class CustomSelfRegistrationServiceImpl implements CustomSelfRegistration
         Map<String, Object> result = new HashMap<>();
         result.put(Constants.REGISTRATION_LINK_CSR, customSelfRegistrationModel.getRegistrationLink());
         result.put(Constants.QR_REGISTRATION_LINK_CSR, customSelfRegistrationModel.getQrCodeFilePath());
+        result.put(Constants.QR_LOGO_PATH, customSelfRegistrationModel.getQrLogoFilePath());
         response.getResult().putAll(result);
         response.getParams().setStatus(Constants.OK);
         response.setResponseCode(HttpStatus.OK);
@@ -529,11 +528,12 @@ public class CustomSelfRegistrationServiceImpl implements CustomSelfRegistration
      * @param orgId         The organization ID.
      * @param registrationLink The registration link.
      * @param qrCodeFile    The QR code file.
+     * @param qrCodeLogoFile    The QR code logo file.
      * @param userId        The user ID.
      * @param uniqueId  currenttimestamp as string is appended in the url path.
      * @return A CustomSelfRegistrationModel instance.
      */
-    public CustomSelfRegistrationModel getCustomSelfRegistrationModel(Map<String, Object> requestBody, String orgId, String registrationLink, File qrCodeFile, String userId, String uniqueId) {
+    public CustomSelfRegistrationModel getCustomSelfRegistrationModel(Map<String, Object> requestBody, String orgId, String registrationLink, File qrCodeFile,File qrCodeLogoFile, String userId, String uniqueId) {
         logger.info("CustomSelfRegistrationServiceImpl::getCustomSelfRegistrationModel : Creating the CustomSelfRegistrationModel instance for organization: " + orgId);
         ZoneId zoneId = ZoneId.of("Asia/Kolkata");
         ZonedDateTime registrationStartDateLong = Instant.ofEpochMilli(Long.parseLong(String.valueOf(requestBody.get(Constants.REGISTRATION_START_DATE)))).atZone(zoneId);
@@ -548,6 +548,7 @@ public class CustomSelfRegistrationServiceImpl implements CustomSelfRegistration
                 .orgId(orgId)
                 .registrationLink(registrationLink)
                 .qrCodeFilePath(String.format("%s/%s", serverProperties.getQrCustomerSelfRegistrationPath(), qrCodeFile.getName()))
+                .qrLogoFilePath(String.format("%s/%s", serverProperties.getQrCustomerSelfRegistrationPath(), qrCodeLogoFile.getName()))
                 .status(Constants.ACTIVE)
                 .createdby(userId)
                 .numberofusersonboarded(0L)
@@ -562,21 +563,21 @@ public class CustomSelfRegistrationServiceImpl implements CustomSelfRegistration
      * Checks if the registration QR code is active for the given organization ID.
      *
      * @param orgId The organization ID.
-     * @return True if the QR code is active, false otherwise.
+     *
      */
-    private boolean isRegistrationQRCodeActive(String orgId) {
+    private void isRegistrationQRCodeActive(String orgId) {
         logger.info("CustomSelfRegistrationServiceImpl::isRegistrationQRCodeActive : Checking if registration QR code is active for orgId: {}", orgId);
         List<CustomeSelfRegistrationEntity> qrRegistrationCodeByOrgIds = qrRegistrationCodeRepository.findAllByOrgId(orgId);
-        if (qrRegistrationCodeByOrgIds.isEmpty()) {
-            return false;
-        }
-        for (CustomeSelfRegistrationEntity qrCode : qrRegistrationCodeByOrgIds) {
-            String status = qrCode.getStatus();
-            if (Constants.ACTIVE.equalsIgnoreCase(status)) {
-                return !Constants.TRUE.equalsIgnoreCase(serverProperties.getSkipQRCodeValdationCheck());
-            }
-        }
-        return false;
+        Optional.ofNullable(qrRegistrationCodeByOrgIds).orElse(Collections.emptyList()).
+                stream().
+                filter(qrCodeDetails -> Constants.ACTIVE.equalsIgnoreCase(qrCodeDetails.getStatus())).
+                forEach(qrCodeDetails -> {
+                    try {
+                        qrRegistrationCodeRepository.updateRegistrationQrCodeWithStatus(qrCodeDetails.getOrgId(), qrCodeDetails.getId(), "expired");
+                    } catch (Exception e) {
+                        logger.error("CustomSelfRegistrationServiceImpl::getCustomSelfRegistrationModel :Failed to update QR code with ID {}: {}", qrCodeDetails.getId(), e.getMessage());
+                    }
+                });
     }
 
     /**
@@ -597,6 +598,7 @@ public class CustomSelfRegistrationServiceImpl implements CustomSelfRegistration
                 .createdDateTime(customSelfRegistrationModel.getCreateddatetime())
                 .numberOfUsersOnboarded(customSelfRegistrationModel.getNumberofusersonboarded())
                 .qrCodeImagePath(customSelfRegistrationModel.getQrCodeFilePath())
+                .qrCodeLogoPath(customSelfRegistrationModel.getQrLogoFilePath())
                 .build();
         qrRegistrationCodeRepository.save(registrationQRCode);
     }
@@ -621,6 +623,14 @@ public class CustomSelfRegistrationServiceImpl implements CustomSelfRegistration
         if (StringUtils.isBlank(orgId)) return outgoingResponse;
         // Get the QR code details
         List<CustomeSelfRegistrationEntity> qrRegistrationCodeByOrgIds = qrRegistrationCodeRepository.findAllByOrgId(orgId);
+        Long totalNumberOfUsersOnboarded = qrRegistrationCodeByOrgIds.stream()
+                .mapToLong(entity ->
+                        entity.getNumberOfUsersOnboarded() != null ? entity.getNumberOfUsersOnboarded() : 0
+                )
+                .sum();
+        qrRegistrationCodeByOrgIds.forEach(customeSelfRegistrationEntity ->
+                customeSelfRegistrationEntity.setNumberOfUsersOnboarded(totalNumberOfUsersOnboarded)
+        );
         if (CollectionUtils.isEmpty(qrRegistrationCodeByOrgIds)) {
             outgoingResponse.getParams().setStatus(Constants.FAILED);
             outgoingResponse.getParams().setErrmsg("No QR Code found for this org");
