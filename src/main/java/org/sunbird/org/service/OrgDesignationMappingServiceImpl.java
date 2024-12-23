@@ -157,6 +157,10 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                 return response;
             }
 
+            if (isFileExistForProcessingForMDO(rootOrgId)) {
+                setErrorDataForMdo(response, "Failed to upload for another request as previous request is in processing state, please try after some time.");
+                return response;
+            }
             SBApiResponse uploadResponse = storageService.uploadFile(file, serverProperties.getOrgDesignationBulkUploadContainerName());
             if (!HttpStatus.OK.equals(uploadResponse.getResponseCode())) {
                 setErrorData(response, String.format("Failed to upload file. Error: %s",
@@ -385,7 +389,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
 
     @Override
     public void initiateOrgDesignationBulkUploadProcess(String value) {
-        logger.info("OrgDesignationMapping:: initiateUserBulkUploadProcess: Started");
+        logger.info("OrgDesignationMapping:: initiateDesignationUploadProcess: Started");
         long duration = 0;
         long startTime = System.currentTimeMillis();
         try {
@@ -406,7 +410,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                     e);
         }
         duration = System.currentTimeMillis() - startTime;
-        logger.info("CompetencyDesignationMapping:: initiateUserBulkUploadProcess: Completed. Time taken: "
+        logger.info("CompetencyDesignationMapping:: initiateDesignationBulkUploadProcess: Completed. Time taken: "
                 + duration + " milli-seconds");
     }
 
@@ -603,6 +607,9 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                     statusCell.setCellValue("Status");
                     errorDetails.setCellValue("Error Details");
                 }
+                List<String> associationsList = new ArrayList<>();
+                List<Map<String, Object>> getAllDesignationForOrg = populateDataFromFrameworkTerm(frameworkId);
+                List<Map<String, Object>> orgFrameworkTerms = null;
                 while (rowIterator.hasNext()) {
                     Row nextRow = rowIterator.next();
                     boolean allColumnsEmpty = true;
@@ -620,10 +627,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                     }
                     if (allColumnsEmpty) continue;
                     logger.info("CompetencyDesignationMapping:: Record " + count++);
-                    Thread.sleep(500);
-                    List<Map<String, Object>> getAllDesignationForOrg = populateDataFromFrameworkTerm(frameworkId);
                     Map<String, Object> orgFrameworkObject = null;
-                    List<Map<String, Object>> orgFrameworkTerms = null;
                     if (CollectionUtils.isNotEmpty(getAllDesignationForOrg)) {
                         orgFrameworkObject = getAllDesignationForOrg.stream().filter(n -> ((String) (n.get("code")))
                                 .equalsIgnoreCase(Constants.ORG)).findFirst().orElse(null);
@@ -661,7 +665,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                                     } else {
                                         boolean isDesignationAssociationsPresent = associations.stream().anyMatch(n -> ((String) n.get(Constants.NAME)).equalsIgnoreCase(designation));
                                         if (isDesignationAssociationsPresent) {
-                                            invalidErrList.add("Already designation: " + designation + "is mapped for org");
+                                            invalidErrList.add("Already designation: " + designation + " is mapped for org");
                                         } else {
                                             Map<String, Object> designationObject = getDesignationObject(getAllDesignationForOrg, designation);
                                             if (MapUtils.isNotEmpty(designationObject)) {
@@ -679,7 +683,6 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                                     invalidErrList.add("Invalid designation for org: " + designation);
                                 }
                             }
-
                         } else {
                             invalidErrList.add("Invalid column type for designation. Expecting string format");
                         }
@@ -699,7 +702,6 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                     }
                     totalRecordsCount++;
                     progressUpdateThresholdValue++;
-                    String orgId = inputDataMap.get(Constants.ROOT_ORG_ID);
                     if (!errList.isEmpty()) {
                         setErrorDetails(str, errList, statusCell, errorDetails);
                         failedRecordsCount++;
@@ -716,13 +718,13 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                             Map<String, Object> masterObjectForDesignation = masterDesignationMapping.stream().filter(n -> ((String) n.get(Constants.DESIGNATION)).equalsIgnoreCase((String) designationMappingInfoMap.get(Constants.DESIGNATION))).findFirst().map(HashMap::new).orElse(null);
                             if (MapUtils.isNotEmpty(masterObjectForDesignation)) {
                                 designationMappingInfoMap.put(Constants.DESIGNATION, masterObjectForDesignation);
-                                addUpdateDesignationMapping(frameworkId, designationMappingInfoMap, invalidErrList, orgId, null);
+                                addUpdateDesignationMapping(frameworkId, designationMappingInfoMap, invalidErrList, null, associationsList);
                             } else {
                                 invalidErrList.add("The issue while fetching the framework term for the org.");
                             }
                         } else {
                             if (StringUtils.isNotEmpty(associationIdentifier)) {
-                                addUpdateDesignationMapping(frameworkId, designationMappingInfoMap, invalidErrList, orgId, associationIdentifier);
+                                addUpdateDesignationMapping(frameworkId, designationMappingInfoMap, invalidErrList, associationIdentifier, associationsList);
                             }
                             if (StringUtils.isEmpty(associationIdentifier) && CollectionUtils.isEmpty(invalidErrList)) {
                                 invalidErrList.add("The issue while fetching the framework for the org.");
@@ -739,13 +741,54 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                         }
                     }
                     duration = System.currentTimeMillis() - startTime;
-                    logger.info("UserBulkUploadService:: Record Completed. Time taken: "
+                    logger.info("OrgDesignationMappingService:: Record Completed. Time taken: "
                             + duration + " milli-seconds");
                     if (progressUpdateThresholdValue >= serverProperties.getBulkUploadThresholdValue()) {
                         updateOrgCompetencyDesignationMappingBulkUploadStatus(inputDataMap.get(Constants.ROOT_ORG_ID), inputDataMap.get(Constants.IDENTIFIER),
                                 Constants.STATUS_IN_PROGRESS_UPPERCASE, totalNumberOfRecordInSheet, noOfSuccessfulRecords, failedRecordsCount);
                         progressUpdateThresholdValue = 0;
                     }
+                }
+                List<String> errList = new ArrayList<>();
+                if (CollectionUtils.isNotEmpty(associationsList)) {
+                    String code = null;
+                    if (CollectionUtils.isNotEmpty(orgFrameworkTerms)) {
+                        Map<String, Object> orgFrameworkTerm = orgFrameworkTerms.stream().filter(n -> ((String) n.get(Constants.STATUS)).equalsIgnoreCase(Constants.LIVE)).findFirst().map(HashMap::new).orElse(null);
+                        if (MapUtils.isNotEmpty(orgFrameworkTerm)) {
+                            code = (String) orgFrameworkTerm.get(Constants.CODE);
+                            List<Map<String, Object>> associationsMap = (List<Map<String, Object>>) orgFrameworkTerm.get(Constants.ASSOCIATIONS);
+                            if (CollectionUtils.isNotEmpty(associationsMap)) {
+                                associationsList.addAll(associationsMap.stream().map(n -> (String) n.get(Constants.IDENTIFIER)).collect(Collectors.toList()));
+                            }
+                        } else {
+                            errList.add("The issue while fetching the framework term for the org which is active.");
+                        }
+                    }
+                    List<Map<String, Object>> createDesignationObject = new ArrayList<>();
+                    for (String association : associationsList) {
+                        Map<String, Object> nodeIdMap = new HashMap<>();
+                        nodeIdMap.put(Constants.IDENTIFIER, association);
+                        createDesignationObject.add(nodeIdMap);
+                    }
+                    logger.info("The associated size need to be updated: " + associationsList.size());
+                    String orgId = inputDataMap.get(Constants.ROOT_ORG_ID);
+                    addAssociationAndPublish(frameworkId, createDesignationObject, errList, orgId, code);
+                    if (CollectionUtils.isNotEmpty(errList)) {
+                        noOfSuccessfulRecords = 0;
+                        failedRecordsCount = totalNumberOfRecordInSheet;
+                        rowIterator = sheet.iterator();
+                        if (rowIterator.hasNext()) {
+                            rowIterator.next(); // remove the first header
+                        }
+                        while (rowIterator.hasNext()) {
+                            Row nextRow = rowIterator.next();
+                            Cell statusCell = nextRow.getCell(1);
+                            Cell errorDetails = nextRow.getCell(2);
+                            statusCell.setCellValue(Constants.FAILED_UPPERCASE);
+                            errorDetails.setCellValue(String.join(", ", errList));
+                        }
+                    }
+
                 }
                 if (totalRecordsCount == 0) {
                     XSSFRow row = sheet.createRow(sheet.getLastRowNum() + 1);
@@ -799,47 +842,16 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
         return null;
     }
 
-    private void addUpdateDesignationMapping(String frameworkId, Map<String, Object> designationMappingInfoMap, List<String> invalidErrList, String orgId, String associationsIdentifier) {
+    private void addUpdateDesignationMapping(String frameworkId, Map<String, Object> designationMappingInfoMap, List<String> invalidErrList, String associationsIdentifier, List<String> associationsIdentifierList) {
         try {
-            List<String> nodeId = new ArrayList<>();
             if (StringUtils.isEmpty(associationsIdentifier)) {
                 Map<String, Object> termCreateRespDesignation = createTermFrameworkObjectForDesignation(frameworkId, designationMappingInfoMap);
                 if (MapUtils.isNotEmpty(termCreateRespDesignation)) {
-                    nodeId.addAll((List<String>) termCreateRespDesignation.get("node_id"));
-                    logger.info("The NodeId for term create is: " + nodeId);
+                    associationsIdentifierList.addAll((List<String>) termCreateRespDesignation.get("node_id"));
+                    logger.info("The NodeId for term create is: " + associationsIdentifierList.size());
                 }
             } else {
-                nodeId.add(associationsIdentifier);
-            }
-
-            List<String> associations = new ArrayList<>();
-            if (CollectionUtils.isNotEmpty(nodeId)) {
-                Map<String, Object> terms = (Map<String, Object>) designationMappingInfoMap.get(Constants.ORGANISATION);
-                if (MapUtils.isNotEmpty(terms)) {
-                    List<Map<String, Object>> associationsMap = (List<Map<String, Object>>) terms.get(Constants.ASSOCIATIONS);
-                    if (CollectionUtils.isNotEmpty(associationsMap)) {
-                        associations.addAll(associationsMap.stream().map(n -> (String) n.get(Constants.IDENTIFIER)).collect(Collectors.toList()));
-                    }
-                    associations.addAll(nodeId);
-                    List<Map<String, Object>> createDesignationObject = new ArrayList<>();
-                    for (String association : associations) {
-                        Map<String, Object> nodeIdMap = new HashMap<>();
-                        nodeIdMap.put(Constants.IDENTIFIER, association);
-                        createDesignationObject.add(nodeIdMap);
-                    }
-                    logger.info("The associated size need to be updated: " + associations.size());
-                    Map<String, Object> frameworkAssociationUpdateForOrg = updateFrameworkTerm(frameworkId, updateRequestObject(createDesignationObject), Constants.ORG, (String) terms.get(Constants.CODE));
-                    if (MapUtils.isNotEmpty(frameworkAssociationUpdateForOrg)) {
-                        Map<String, Object> result = publishFramework(frameworkId, new HashMap<>(), orgId);
-                        if (MapUtils.isNotEmpty(result)) {
-                            logger.info("Publish is Success for frameworkId: " + frameworkId);
-                        } else {
-                            invalidErrList.add("Issue while publish the framework.");
-                        }
-                    } else {
-                        invalidErrList.add("Issue while adding the associations to the framework for theme.");
-                    }
-                }
+                associationsIdentifierList.add(associationsIdentifier);
             }
         } catch (Exception e) {
             logger.error("Issue while creating the term object for designation.", e);
@@ -1016,5 +1028,72 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
             return userInfoMap.get(userId);
         }
         return null;
+    }
+
+    private void addAssociationAndPublish(String frameworkId, List<Map<String, Object>> associationList, List<String> errList, String orgId, String organisationTermCode) {
+        Map<String, Object> frameworkAssociationUpdateForOrg = null;
+        try {
+            frameworkAssociationUpdateForOrg = updateFrameworkTerm(frameworkId, updateRequestObject(associationList), Constants.ORG, organisationTermCode);
+            if (MapUtils.isNotEmpty(frameworkAssociationUpdateForOrg)) {
+                Map<String, Object> result = publishFramework(frameworkId, new HashMap<>(), orgId);
+                if (MapUtils.isNotEmpty(result)) {
+                    logger.info("Publish is Success for frameworkId: " + frameworkId);
+                } else {
+                    errList.add("Issue while publish the framework.");
+                }
+            } else {
+                errList.add("Issue while adding the associations to the framework for theme.");
+            }
+        } catch (Exception e) {
+            logger.error("Issue while publish or adding the associations to the framework: ", e);
+            errList.add("Issue while publish or adding the associations to the framework.");
+        }
+    }
+
+    @Override
+    public void updateDBStatusAtShutDown(String value) {
+        logger.info("updateDBStatusAtShutDown:: initiateProcess: Started");
+        long duration = 0;
+        long startTime = System.currentTimeMillis();
+        try {
+            HashMap<String, String> inputDataMap = objectMapper.readValue(value,
+                    new TypeReference<Object>() {
+                    });
+            List<String> errList = validateReceivedKafkaMessage(inputDataMap);
+            if (errList.isEmpty()) {
+                if (isFileExistForProcessingForMDO(inputDataMap.get(Constants.ROOT_ORG_ID))) {
+                    updateOrgCompetencyDesignationMappingBulkUploadStatus(inputDataMap.get(Constants.ROOT_ORG_ID),
+                            inputDataMap.get(Constants.IDENTIFIER), Constants.FAILED_UPPERCASE, 0, 0, 0);
+                }
+            } else {
+                logger.error(String.format("Error in the Kafka Message Received : %s", errList));
+            }
+        } catch (Exception e) {
+            logger.error(String.format("Error in the scheduler to update the record %s", e.getMessage()),
+                    e);
+        }
+        duration = System.currentTimeMillis() - startTime;
+        logger.info("UpdateDBStatusAtShutDown:: initiateProcess: Completed. Time taken: "
+                + duration + " milli-seconds");
+    }
+
+    private boolean isFileExistForProcessingForMDO(String mdoId) {
+        Map<String, Object> bulkUploadPrimaryKey = new HashMap<String, Object>();
+        bulkUploadPrimaryKey.put(Constants.ROOT_ORG_ID, mdoId);
+        List<String> fields = Arrays.asList(Constants.ROOT_ORG_ID, Constants.IDENTIFIER, Constants.STATUS);
+
+        List<Map<String, Object>> bulkUploadMdoList = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+                Constants.KEYSPACE_SUNBIRD, Constants.TABLE_ORG_DESIGNATION_MAPPING_BULK_UPLOAD, bulkUploadPrimaryKey, fields);
+        if (CollectionUtils.isEmpty(bulkUploadMdoList)) {
+            return false;
+        }
+        return bulkUploadMdoList.stream()
+                .anyMatch(entry -> Constants.STATUS_IN_PROGRESS_UPPERCASE.equalsIgnoreCase((String) entry.get(Constants.STATUS)));
+    }
+
+    private void setErrorDataForMdo(SBApiResponse response, String errMsg) {
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErrmsg(errMsg);
+        response.setResponseCode(HttpStatus.TOO_MANY_REQUESTS);
     }
 }

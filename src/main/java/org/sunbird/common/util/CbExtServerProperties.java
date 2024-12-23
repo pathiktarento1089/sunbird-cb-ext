@@ -975,6 +975,9 @@ public class CbExtServerProperties {
 	@Value("${map.id.counter.enabled}")
 	private String mapIdCounterEnabled;
 
+  @Value("${course.recommendation.designation.redis.key}")
+	private String courseRecommendationsByDesignationKey;
+
 
 	public String getCiosCloudIconFolderName() {
 		return ciosCloudIconFolderName;
@@ -3372,5 +3375,14 @@ public class CbExtServerProperties {
 
 	public void setMapIdCounterEnabled(String mapIdCounterEnabled) {
 		this.mapIdCounterEnabled = mapIdCounterEnabled;
+
 	}
+  
+  public String getCourseRecommendationsByDesignationKey() {
+		return courseRecommendationsByDesignationKey;
+	}
+
+	public void setCourseRecommendationsByDesignationKey(String courseRecommendationsByDesignationKey) {
+		this.courseRecommendationsByDesignationKey = courseRecommendationsByDesignationKey;
+  }
 }

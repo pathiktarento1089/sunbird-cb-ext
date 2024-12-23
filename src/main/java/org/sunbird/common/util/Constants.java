@@ -1314,8 +1314,9 @@ public class Constants {
 	public static final String IS_WHATSAPP_CONSENT="isWhatsappConsent";
 	public static final String QR_LOGO_PATH = "qrCodeLogoPath";
 	public static final String ENABLED = "enabled";
-
 	public static final String INVALID_GROUP_MESSAGE = "Invalid Group : Group can be only among one of these ";
+  public static final String API_COURSE_RECOMMENDATIONS ="api.insights.get.courses.recommendations.designation";
+	public static final String COURSE_LIST ="courseList";
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");
