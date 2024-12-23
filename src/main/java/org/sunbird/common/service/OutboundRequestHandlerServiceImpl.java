@@ -186,19 +186,19 @@ public class OutboundRequestHandlerServiceImpl {
 			}
 			headers.setContentType(MediaType.APPLICATION_JSON);
 			HttpEntity<Object> entity = new HttpEntity<>(request, headers);
-			if (log.isDebugEnabled()) {
+			//if (log.isDebugEnabled()) {
 				StringBuilder str = new StringBuilder(this.getClass().getCanonicalName()).append(".fetchResult")
 						.append(System.lineSeparator());
 				str.append("URI: ").append(uri).append(System.lineSeparator());
 				str.append("Request: ").append(mapper.writeValueAsString(request)).append(System.lineSeparator());
-				log.debug(str.toString());
-			}
+				log.info(str.toString());
+			//}
 			response = restTemplate.postForObject(uri, entity, Map.class);
-			if (log.isDebugEnabled()) {
-				StringBuilder str = new StringBuilder("Response: ");
+			//if (log.isDebugEnabled()) {
+				str = new StringBuilder("Response: ");
 				str.append(mapper.writeValueAsString(response)).append(System.lineSeparator());
-				log.debug(str.toString());
-			}
+				log.info(str.toString());
+			//}
 		} catch (HttpClientErrorException hce) {
 			try {
 				response = (new ObjectMapper()).readValue(hce.getResponseBodyAsString(),
