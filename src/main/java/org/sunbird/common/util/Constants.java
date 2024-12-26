@@ -1316,6 +1316,9 @@ public class Constants {
 	public static final String ENABLED = "enabled";
 
 	public static final String INVALID_GROUP_MESSAGE = "Invalid Group : Group can be only among one of these ";
+  public static final String SEND_FOR_APPROVAL = "SEND_FOR_APPROVAL";
+	public static final String ERR_MSG_APPROVAL_REQUEST = "Error while rejecting approval requests";
+	public static final String FAILED_MSG_APPROVAL_REQUEST = "Failed to reject approval requests for userId: {}";
 
 	private Constants() {
 		throw new IllegalStateException("Utility class");
