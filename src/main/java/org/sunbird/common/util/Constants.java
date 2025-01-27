@@ -1315,6 +1315,10 @@ public class Constants {
 	public static final String QR_LOGO_PATH = "qrCodeLogoPath";
 	public static final String ENABLED = "enabled";
 	public static final String INVALID_GROUP_MESSAGE = "Invalid Group : Group can be only among one of these ";
+    public static final String SEND_FOR_APPROVAL = "SEND_FOR_APPROVAL";
+	public static final String ERR_MSG_APPROVAL_REQUEST = "Error while rejecting approval requests";
+	public static final String FAILED_MSG_APPROVAL_REQUEST = "Failed to reject approval requests for userId: {}";
+	public static final String PROFILE_APPROVAL_AUTO_REJECT_MESSAGE ="You are no longer recognized as a user by your current organization. Reach out to your MDO or submit a \"Transfer Request\".";
     public static final String API_COURSE_RECOMMENDATIONS ="api.insights.get.courses.recommendations.designation";
 	public static final String COURSE_LIST ="courseList";
 	public static final String DESIGNATION_FILLED_DURING_ENROLLMENT = "Designation (filled during enrollment)";

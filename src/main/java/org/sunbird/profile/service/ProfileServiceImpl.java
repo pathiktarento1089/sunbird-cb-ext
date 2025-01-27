@@ -36,6 +36,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.multipart.MultipartFile;
+import org.sunbird.bpreports.postgres.entity.WfStatusEntity;
+import org.sunbird.bpreports.postgres.repository.WfStatusEntityRepository;
 import org.sunbird.cache.DataCacheMgr;
 import org.sunbird.cassandra.utils.CassandraOperation;
 import org.sunbird.common.model.SBApiResponse;
@@ -118,6 +120,9 @@ public class ProfileServiceImpl implements ProfileService {
 
 	@Autowired
 	CbExtServerProperties serverProperties;
+
+  @Autowired
+  WfStatusEntityRepository wfStatusEntityRepository;
 
 	private Logger log = LoggerFactory.getLogger(getClass().getName());
 
@@ -1971,6 +1976,16 @@ public class ProfileServiceImpl implements ProfileService {
 						existingProfileDetails.put(changedObj, profileDetailsMap.get(changedObj));
 						if (Constants.PROFILE_STATUS.equalsIgnoreCase(changedObj)) {
 							updatedProfileStatus = (String) profileDetailsMap.get(changedObj);
+							if (Constants.NOT_MY_USER.equalsIgnoreCase(updatedProfileStatus)) {
+								boolean isRejected = rejectProfileApprovalRequestById(userId);
+								if (!isRejected) {
+									log.error(Constants.FAILED_MSG_APPROVAL_REQUEST, userId);
+									response.getParams().setStatus(Constants.FAILED);
+									response.getParams().setErr(Constants.ERR_MSG_APPROVAL_REQUEST);
+									response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+									return response;
+								}
+							}
 						}
 					} else if (profileDetailsMap.get(changedObj) instanceof ArrayList) {
 						// KB-3718
@@ -2434,6 +2449,33 @@ public class ProfileServiceImpl implements ProfileService {
 					String.format("Failed to process user bulk upload request. Error: ", e.getMessage()));
 		}
 		return response;
+	}
+
+	private boolean rejectProfileApprovalRequestById(String userId) {
+		try {
+			// Fetch pending approval requests for the user
+			List<WfStatusEntity> pendingApprovalRequests = wfStatusEntityRepository.findProfileApprovalRequests(
+					userId, Constants.PROFILE, Constants.SEND_FOR_APPROVAL);
+			if (CollectionUtils.isEmpty(pendingApprovalRequests)) {
+				log.info("No pending approval requests found for user: {}", userId);
+				return true;
+			}
+			// Update and save all requests in bulk
+			pendingApprovalRequests.forEach(request -> {
+				request.setCurrentStatus(Constants.REJECTED_UPPER_CASE);
+				request.setInWorkflow(Boolean.FALSE);
+				request.setComment(Constants.PROFILE_APPROVAL_AUTO_REJECT_MESSAGE);
+				request.setLastUpdatedOn(new Date());
+			});
+			wfStatusEntityRepository.saveAll(pendingApprovalRequests);
+			log.info("Successfully rejected {} profile approval requests for user: {}",
+					pendingApprovalRequests.size(), userId);
+			return true;
+		} catch (Exception ex) {
+			// Log the exception and return failure
+			log.error("Error rejecting profile approval requests for user: {}", userId, ex);
+			return false;
+		}
 	}
 
 }

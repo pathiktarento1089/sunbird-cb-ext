@@ -661,7 +661,9 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                     } else {
                         if (nextRow.getCell(0).getCellType() == CellType.STRING) {
                             String designation = nextRow.getCell(0).getStringCellValue().trim();
+                            logger.info("Bulk upload desingation: "  + designation);
                             if (CollectionUtils.isNotEmpty(orgDesignation) && orgDesignation.contains(designation)) {
+                                logger.info("The orgDesignation size: " + orgDesignation.size());
                                 if (CollectionUtils.isNotEmpty(orgFrameworkTerms)) {
                                     List<Map<String, Object>> associations = (List<Map<String, Object>>) orgFrameworkTerms.get(0).get(Constants.ASSOCIATIONS);
                                     if (CollectionUtils.isEmpty(associations)) { // For the first association Object addition
@@ -669,6 +671,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                                         if (MapUtils.isNotEmpty(designationObject)) {
                                             associationIdentifier = (String) designationObject.get(Constants.IDENTIFIER);
                                         } else {
+                                            logger.error("Issue while adding the designation for org: " + designation + "for org: " + frameworkId);
                                             invalidErrList.add("Issue while adding the designation for org");
                                         }
                                     } else {
@@ -680,6 +683,7 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                                             if (MapUtils.isNotEmpty(designationObject)) {
                                                 associationIdentifier = (String) designationObject.get(Constants.IDENTIFIER);
                                             } else {
+                                                logger.error("Issue while adding the designation for org: " + designation + "for org: " + frameworkId + " association is present");
                                                 invalidErrList.add("Issue while adding the designation for org");
                                             }
                                         }
@@ -689,10 +693,12 @@ public class OrgDesignationMappingServiceImpl implements OrgDesignationMappingSe
                                 if (masterDesignation.contains(designation)) {
                                     designationMappingInfoMap.put(Constants.DESIGNATION, designation);
                                 } else {
+                                    logger.error("Invalid designation for org.");
                                     invalidErrList.add("Invalid designation for org: " + designation);
                                 }
                             }
                         } else {
+                            logger.error("Invalid column type for designation.");
                             invalidErrList.add("Invalid column type for designation. Expecting string format");
                         }
                     }

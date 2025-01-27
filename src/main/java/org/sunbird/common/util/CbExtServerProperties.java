@@ -3380,7 +3380,7 @@ public class CbExtServerProperties {
 		this.mapIdCounterEnabled = mapIdCounterEnabled;
 
 	}
-  
+
   public String getCourseRecommendationsByDesignationKey() {
 		return courseRecommendationsByDesignationKey;
 	}
