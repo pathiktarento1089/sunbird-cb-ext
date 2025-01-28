@@ -298,7 +298,7 @@ public class InsightsServiceImpl implements InsightsService {
                     return response;
                 }
                 designation = designation.toUpperCase();
-                orgId = (String) userData.get(ROOT_ORG_ID);
+                orgId = (String) userData.get(Constants.ROOT_ORG_ID);
             }
             String errMsg = validateUserInfo(orgId, response, designation);
             if (StringUtils.isNotEmpty(errMsg)) return response;
