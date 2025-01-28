@@ -290,15 +290,19 @@ public class InsightsServiceImpl implements InsightsService {
             String userId = fetchUserIdFromToken(authToken, response);
             if (userId == null) return response;
             Map<String, Object> userData = userUtilityService.getUsersReadData(userId, null, null);
+
             if (CollectionUtils.isNotEmpty(Collections.singleton(userData))) {
-                designation = extractDesignation(userData);
-                if (designation != null) {
-                    designation = designation.toUpperCase();
+                designation = extractDesignation(userData,response);
+                if (StringUtils.isEmpty(designation)) {
+                    log.warn("Designation is missing for user with ID: {}", userId);
+                    return response;
                 }
-                orgId = (String) userData.get(Constants.ROOT_ORG_ID);
+                designation = designation.toUpperCase();
+                orgId = (String) userData.get(ROOT_ORG_ID);
             }
             String errMsg = validateUserInfo(orgId, response, designation);
             if (StringUtils.isNotEmpty(errMsg)) return response;
+
             String subKey = orgId + "_" + designation;
             String redisKey = serverProperties.getCourseRecommendationsByDesignationKey();
             List<String> redisData = redisCacheMgr.hget(redisKey, serverProperties.getRedisInsightIndex(), subKey);
@@ -339,26 +343,43 @@ public class InsightsServiceImpl implements InsightsService {
         return null;
     }
 
-    private String extractDesignation(Map<String, Object> userData) {
+    private String extractDesignation(Map<String, Object> userData, SBApiResponse response) {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode userDataNode = objectMapper.convertValue(userData, JsonNode.class);
         JsonNode profileDetails = userDataNode.get(Constants.PROFILE_DETAILS);
         if (profileDetails == null) {
             log.warn("User profile details are missing in the provided user data.");
-            return "Profile details are unavailable";
+            response.getParams().setStatus(FAILED);
+            response.put(MESSAGE, "User profile details are missing.");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
         }
         JsonNode professionalDetailsArray = profileDetails.get("professionalDetails");
         if (professionalDetailsArray == null || professionalDetailsArray.size() == 0) {
             log.warn("Professional details are missing or not an array in the user profile.");
-            return "Professional details are unavailable";
+            response.getParams().setStatus(FAILED);
+            response.put(MESSAGE, "User professional details are not available");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
         }
         JsonNode professionalDetails = professionalDetailsArray.get(0);
       
         if (professionalDetails == null) {
             log.warn("Professional details are missing in the user profile.");
-            return "Professional details are unavailable";
+            response.getParams().setStatus(FAILED);
+            response.put(MESSAGE, "Professional details entry is unavailable for the user");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
         }
-        return professionalDetails.get(Constants.DESIGNATION).asText();
+        JsonNode designationNode = professionalDetails.get(DESIGNATION);
+        if(designationNode == null ||CollectionUtils.isEmpty(Collections.singleton(designationNode))) {
+            response.getParams().setStatus(FAILED);
+            response.put(MESSAGE, "Designation is unavailable for the user");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            log.warn("Designation is missing in professional details.");
+            return null;
+        }
+        return designationNode.asText();
     }
 
 
